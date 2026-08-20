@@ -1,0 +1,10 @@
+# Normalise text in the repository and let checkout pick the platform ending.
+* text=auto
+
+# build.bat must arrive with CRLF: cmd is unreliable about labels and goto in a
+# batch file with bare LF endings, and this project is built by running it.
+*.bat text eol=crlf
+
+# Never touch the artwork or captured frames.
+*.png binary
+*.bmp binary
