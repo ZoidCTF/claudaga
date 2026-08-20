@@ -8,6 +8,18 @@ collisions kill, the score counts, and clearing a wave starts the next stage.
 
 ## Build and run
 
+The repository does not carry its dependencies, so fetch them once after
+cloning:
+
+```bash
+toolsetch_deps.bat
+```
+
+That pulls SDL2 2.32.10 and stb_image.h into `third_party/`. Both versions are
+pinned, and SDL2 in particular ships prebuilt `.lib` and `.dll` files, so an
+unplanned upgrade would change what actually links. Re-running it is harmless -
+it skips anything already there. Then:
+
 ```bash
 build.bat
 ```
@@ -83,8 +95,9 @@ src/
   debugfont.*   5x7 font for debug overlays
   main.c        the loop and the three views
 assets/       galaga_sheet.png
-third_party/  SDL2 2.32.10 (VC dev libs), stb_image.h
-tools/        inspect_sheet.py - re-derives sprite coordinates from the sheet
+third_party/  SDL2 2.32.10 (VC dev libs), stb_image.h - fetched, not committed
+tools/        fetch_deps.bat    - downloads the two dependencies
+              inspect_sheet.py  - re-derives sprite coordinates from the sheet
 ```
 
 The picture is 224x288, the arcade's 288x224 raster turned upright for a
