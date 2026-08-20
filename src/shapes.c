@@ -178,6 +178,80 @@ static const ShapePalette ENEMY_SHOT_PAL = {{
     {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
 }};
 
+/* ------------------------------------------------- challenging-stage flyers */
+
+/* These never form up and never shoot; they fly a pattern through the screen
+   and are worth points if caught on the way. Being free of the formation, they
+   can be shaped more loosely than the regulars. */
+
+static const Vec2 MOTH_V[] = {
+    /* upper wing */ {  1.4f, -3.0f }, {  7.8f, -6.8f }, {  7.6f, -1.6f }, {  1.8f, -0.4f },
+    /* lower wing */ {  1.8f,  0.2f }, {  7.2f,  1.6f }, {  6.2f,  6.2f }, {  1.8f,  3.4f },
+    /* wing spot  */ {  3.4f, -4.4f }, {  6.0f, -5.4f }, {  5.8f, -2.8f }, {  3.4f, -2.2f },
+    /* body       */ {  0.0f, -5.6f }, {  1.6f, -4.2f }, {  1.6f,  4.6f }, {  0.0f,  5.6f },
+    /* head       */ {  0.0f, -5.6f }, {  1.1f, -4.8f }, {  1.1f, -3.0f }, {  0.0f, -3.0f },
+};
+
+static const ShapePoly MOTH_P[] = {
+    {  0, 4, 0, true }, {  4, 4, 0, true }, {  8, 4, 2, true },
+    { 12, 4, 1, true }, { 16, 4, 2, true },
+};
+
+static const ShapePalette MOTH_PAL = {{
+    {  60, 200, 120, 255 }, { 230, 255, 230, 255 }, { 255, 160,  40, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+static const Vec2 SCORPION_V[] = {
+    /* pincer */ {  2.0f, -7.4f }, {  5.4f, -6.2f }, {  5.0f, -3.6f }, {  2.2f, -4.6f },
+    /* leg    */ {  3.0f, -1.4f }, {  7.4f,  1.0f }, {  7.0f,  3.0f }, {  3.0f,  1.0f },
+    /* body   */ {  0.0f, -4.6f }, {  3.0f, -3.4f }, {  3.0f,  2.2f }, {  0.0f,  3.2f },
+    /* tail   */ {  0.0f,  2.8f }, {  2.2f,  3.0f }, {  1.6f,  7.2f }, {  0.0f,  7.4f },
+    /* eye    */ {  0.0f, -3.4f }, {  1.5f, -2.6f }, {  1.5f, -1.0f }, {  0.0f, -0.6f },
+};
+
+static const ShapePoly SCORPION_P[] = {
+    {  0, 4, 0, true }, {  4, 4, 0, true }, {  8, 4, 0, true },
+    { 12, 4, 1, true }, { 16, 4, 2, true },
+};
+
+static const ShapePalette SCORPION_PAL = {{
+    { 150,  70, 220, 255 }, { 255, 220,  60, 255 }, { 240, 240, 255, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+static const Vec2 DART_V[] = {
+    /* fin    */ {  1.8f,  0.0f }, {  6.8f,  4.4f }, {  6.4f,  6.4f }, {  1.8f,  4.0f },
+    /* body   */ {  0.0f, -8.0f }, {  1.8f, -2.0f }, {  1.8f,  4.0f }, {  0.0f,  5.2f },
+    /* stripe */ {  0.0f, -3.0f }, {  1.0f, -1.6f }, {  1.0f,  2.0f }, {  0.0f,  3.0f },
+    /* tip    */ {  0.0f, -8.0f }, {  1.2f, -4.4f }, {  0.0f, -4.0f },
+};
+
+static const ShapePoly DART_P[] = {
+    {  0, 4, 0, true }, {  4, 4, 0, true }, {  8, 4, 1, true }, { 12, 3, 2, true },
+};
+
+static const ShapePalette DART_PAL = {{
+    { 230,  50,  90, 255 }, { 255, 240, 240, 255 }, { 255, 210,  60, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+static const Vec2 ORB_V[] = {
+    /* upper spoke */ {  3.0f, -3.6f }, {  7.6f, -5.0f }, {  7.6f, -2.4f }, {  3.2f, -1.2f },
+    /* lower spoke */ {  3.2f,  1.2f }, {  7.6f,  2.4f }, {  7.6f,  5.0f }, {  3.0f,  3.6f },
+    /* core        */ {  0.0f, -5.0f }, {  3.6f, -3.2f }, {  3.6f,  3.2f }, {  0.0f,  5.0f },
+    /* eye         */ {  0.0f, -2.0f }, {  1.8f, -1.0f }, {  1.8f,  1.0f }, {  0.0f,  2.0f },
+};
+
+static const ShapePoly ORB_P[] = {
+    {  0, 4, 1, true }, {  4, 4, 1, true }, {  8, 4, 0, true }, { 12, 4, 2, true },
+};
+
+static const ShapePalette ORB_PAL = {{
+    { 230,  60, 200, 255 }, {  80, 230, 240, 255 }, { 255, 255, 255, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
 /* ------------------------------------------------------------------ table */
 
 static const Shape SHAPES[SHP_COUNT] = {
@@ -187,6 +261,10 @@ static const Shape SHAPES[SHP_COUNT] = {
     { "BOSS",        BOSS_V,        BOSS_P,        (int)ARRAY_COUNT(BOSS_P),        &BOSS_PAL        },
     { "PLAYER SHOT", PLAYER_SHOT_V, PLAYER_SHOT_P, (int)ARRAY_COUNT(PLAYER_SHOT_P), &PLAYER_SHOT_PAL },
     { "ENEMY SHOT",  ENEMY_SHOT_V,  ENEMY_SHOT_P,  (int)ARRAY_COUNT(ENEMY_SHOT_P),  &ENEMY_SHOT_PAL  },
+    { "MOTH",        MOTH_V,        MOTH_P,        (int)ARRAY_COUNT(MOTH_P),        &MOTH_PAL        },
+    { "SCORPION",    SCORPION_V,    SCORPION_P,    (int)ARRAY_COUNT(SCORPION_P),    &SCORPION_PAL    },
+    { "DART",        DART_V,        DART_P,        (int)ARRAY_COUNT(DART_P),        &DART_PAL        },
+    { "ORB",         ORB_V,         ORB_P,         (int)ARRAY_COUNT(ORB_P),         &ORB_PAL         },
 };
 
 const Shape *shape_get(ShapeId id)

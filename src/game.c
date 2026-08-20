@@ -10,6 +10,7 @@ static const SDL_Color WHITE  = { 255, 255, 255, 255 };
 static const SDL_Color YELLOW = { 255, 216,   0, 255 };
 static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color RED    = { 255,  72,  72, 255 };
+static const SDL_Color DIM    = { 150, 150, 168, 255 };
 
 #define PLAYER_SPEED    1.6f
 #define SHOT_SPEED      4.0f
@@ -96,6 +97,7 @@ static void stars_draw(Gfx *g)
 /* ------------------------------------------------------------------ setup */
 
 static void clear_shots(Game *g);
+static void start_stage(Game *g);
 
 /* Reports what a freshly handed-out wave looks like: any boss already showing
    damage, or any shot still live, means something leaked across the stage
@@ -146,8 +148,28 @@ void game_restart(Game *g)
     clear_shots(g);
     g->fire_cooldown = 0;
 
+    g->bonus_hits  = 0;
+    g->bonus_award = 0;
+
     fx_reset(&g->fx);
-    wave_restart(&g->wave);
+    start_stage(g);
+}
+
+/* Every fourth stage from the third is a bonus round, as on the real board:
+   3, 7, 11 and so on. */
+static bool is_challenge_stage(int stage)
+{
+    return stage >= 3 && ((stage - 3) % 4) == 0;
+}
+
+/* Hands out whichever kind of wave the stage number calls for. */
+static void start_stage(Game *g)
+{
+    if (is_challenge_stage(g->stage)) {
+        wave_restart_challenge(&g->wave, g->stage / 4);
+    } else {
+        wave_restart(&g->wave);
+    }
 }
 
 /* ------------------------------------------------------------- collision */
@@ -304,6 +326,10 @@ static void collide_player(Game *g)
         }
     }
 
+    /* Nothing in a bonus round can hurt the fighter - the flyers are there to
+       be shot at, not to fight back. */
+    if (wave_is_challenge(&g->wave)) return;
+
     /* Only a diver can reach the fighter, but testing every live enemy costs
        nothing and means a stray one cannot pass through it unnoticed. */
     for (int e = 0; e < MAX_ENEMIES; ++e) {
@@ -393,7 +419,7 @@ void game_update(Game *g, const Uint8 *keys)
         if (--g->stage_clear == 0) {
             ++g->stage;
             clear_shots(g);        /* nothing from the old wave survives */
-            wave_restart(&g->wave);
+            start_stage(g);
             if (g->trace) trace_new_wave(g);
         }
         return;
@@ -472,6 +498,20 @@ void game_update(Game *g, const Uint8 *keys)
     if (wave_cleared(&g->wave) && g->stage_clear == 0) {
         g->stage_clear = STAGE_PAUSE;
 
+        /* A bonus round pays out when it ends: a flat rate per flyer caught on
+           the way through, and a much larger bonus for catching every one. */
+        if (wave_is_challenge(&g->wave)) {
+            g->bonus_hits  = wave_challenge_hits(&g->wave);
+            g->bonus_award = (g->bonus_hits >= MAX_ENEMIES) ? CHALLENGE_PERFECT : 0;
+            g->score += g->bonus_award;
+            if (g->trace) {
+                printf("tick %d: bonus round over - %d of %d caught, bonus %d\n",
+                       g->tick, g->bonus_hits, MAX_ENEMIES, g->bonus_award);
+            }
+        } else {
+            g->bonus_hits = g->bonus_award = 0;
+        }
+
         /* The stage is over, so the screen empties. Enemy missiles especially
            have to go now rather than at the end of the pause: the wave stops
            being updated while the message is up, so anything still in the air
@@ -534,8 +574,21 @@ void game_draw(Gfx *gfx, const Game *g)
     snprintf(buf, sizeof buf, "%d", g->score);
     font_draw(gfx, 4, 10, YELLOW, buf);
 
-    snprintf(buf, sizeof buf, "STAGE %d", g->stage);
+    if (wave_is_challenge(&g->wave)) {
+        snprintf(buf, sizeof buf, "BONUS %d", g->stage);
+    } else {
+        snprintf(buf, sizeof buf, "STAGE %d", g->stage);
+    }
     font_draw(gfx, GAME_W - font_width(buf) - 4, 2, CYAN, buf);
+
+    /* A bonus round announces itself, and shows the running tally, since the
+       whole round is about how many are caught. */
+    if (wave_is_challenge(&g->wave) && g->stage_clear == 0) {
+        const char *m = "CHALLENGING STAGE";
+        font_draw(gfx, (GAME_W - font_width(m)) / 2, 20, YELLOW, m);
+        snprintf(buf, sizeof buf, "%d", wave_challenge_hits(&g->wave));
+        font_draw(gfx, (GAME_W - font_width(buf)) / 2, 30, DIM, buf);
+    }
 
     /* Spare lives along the bottom left, drawn as small copies of the ship
        itself rather than a separate icon - one more thing the vector artwork
@@ -551,7 +604,17 @@ void game_draw(Gfx *gfx, const Game *g)
         const char *msg = "GAME OVER";
         font_draw(gfx, (GAME_W - font_width(msg)) / 2, GAME_H / 2 - 4, RED, msg);
     } else if (g->stage_clear > 0) {
-        const char *msg = "STAGE CLEAR";
-        font_draw(gfx, (GAME_W - font_width(msg)) / 2, GAME_H / 2 - 4, CYAN, msg);
+        if (g->bonus_hits > 0 || wave_is_challenge(&g->wave)) {
+            snprintf(buf, sizeof buf, "%d OF %d", g->bonus_hits, MAX_ENEMIES);
+            font_draw(gfx, (GAME_W - font_width(buf)) / 2, GAME_H / 2 - 12, CYAN, buf);
+            if (g->bonus_award > 0) {
+                snprintf(buf, sizeof buf, "PERFECT %d", g->bonus_award);
+                font_draw(gfx, (GAME_W - font_width(buf)) / 2, GAME_H / 2 + 2,
+                          YELLOW, buf);
+            }
+        } else {
+            const char *msg = "STAGE CLEAR";
+            font_draw(gfx, (GAME_W - font_width(msg)) / 2, GAME_H / 2 - 4, CYAN, msg);
+        }
     }
 }

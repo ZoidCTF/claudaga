@@ -92,7 +92,9 @@ typedef enum {
     PATH_TOP_DIVE_L, PATH_TOP_DIVE_R,
     PATH_SWEEP_L,    PATH_SWEEP_R,
     PATH_RETURN_L,   PATH_RETURN_R,
-    PATH_COUNT
+    PATH_CHAL_A_L,   PATH_CHAL_A_R,   /* challenging-stage passes: these */
+    PATH_CHAL_B_L,   PATH_CHAL_B_R,   /* leave the screen rather than    */
+    PATH_COUNT                        /* ending below the formation      */
 } PathId;
 
 typedef struct {
@@ -114,6 +116,11 @@ typedef struct {
     int   tick;
     int   next_attack;       /* tick the next attack is due */
     int   captive_holder;    /* enemy carrying a captured fighter, or -1 */
+
+    /* A challenging stage: the wave flies through without ever forming up,
+       never attacks and never fires, and anything not shot simply escapes. */
+    bool  challenge;
+    int   challenge_hits;
 
     /* The wave draws from its own generator rather than the global rand().
        Sharing one meant the attack mix depended on how many times the
@@ -147,6 +154,17 @@ typedef struct {
 
 void wave_init(Wave *w);       /* builds paths and slots; call once */
 void wave_restart(Wave *w);    /* sends everyone back off-screen */
+
+/* A challenging stage instead of an ordinary one. `variant` picks which bonus
+   flyer fields it and which patterns they fly. */
+void wave_restart_challenge(Wave *w, int variant);
+
+bool wave_is_challenge(const Wave *w);
+int  wave_challenge_hits(const Wave *w);
+
+/* What a bonus round pays: per flyer caught, and for catching all of them. */
+#define CHALLENGE_HIT_SCORE 100
+#define CHALLENGE_PERFECT   10000
 void wave_update(Wave *w, float player_x);
 void wave_draw(Gfx *g, const Wave *w);
 

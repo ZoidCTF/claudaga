@@ -37,35 +37,35 @@ static void shapes_draw(Gfx *g, int tick)
     (void)tick;
     font_draw(g, 4, 2, YELLOW, "VECTOR SHAPES");
 
-    static const ShapeId row[6] = {
-        SHP_FIGHTER, SHP_BEE, SHP_BUTTERFLY,
-        SHP_BOSS, SHP_PLAYER_SHOT, SHP_ENEMY_SHOT,
+    /* Four columns: ten shapes plus the two recolours, which are the same
+       drawings in different palettes and belong beside their originals. */
+    static const struct { ShapeId id; const ShapePalette *pal; const char *name; }
+    CELLS[] = {
+        { SHP_FIGHTER,     NULL, "FIGHTER"  }, { SHP_BEE,      NULL, "BEE"      },
+        { SHP_BUTTERFLY,   NULL, "BFLY"     }, { SHP_BOSS,     NULL, "BOSS"     },
+        { SHP_PLAYER_SHOT, NULL, "SHOT"     }, { SHP_ENEMY_SHOT, NULL, "MISSILE" },
+        { SHP_FIGHTER,     &SHAPE_PAL_FIGHTER_CAPTURED, "TAKEN" },
+        { SHP_BOSS,        &SHAPE_PAL_BOSS_HIT,         "HIT"   },
+        { SHP_MOTH,        NULL, "MOTH"     }, { SHP_SCORPION, NULL, "SCORP"    },
+        { SHP_DART,        NULL, "DART"     }, { SHP_ORB,      NULL, "ORB"      },
     };
-    const float S = 2.6f;
 
-    for (int i = 0; i < 6; ++i) {
-        Vec2 p = { 40.0f + (i % 3) * 72.0f, 48.0f + (i / 3) * 84.0f };
-        shape_draw(g, row[i], p, 0.0f, S);
-        const char *n = shape_name(row[i]);
-        font_draw(g, (int)p.x - font_width(n) / 2, (int)p.y + 30, DIM, n);
+    const float S = 2.0f;
+    for (int i = 0; i < (int)ARRAY_COUNT(CELLS); ++i) {
+        Vec2 p = { 30.0f + (i % 4) * 48.0f, 40.0f + (i / 4) * 56.0f };
+        shape_draw_pal(g, CELLS[i].id, p, 0.0f, S, CELLS[i].pal, 1.0f);
+        font_draw(g, (int)p.x - font_width(CELLS[i].name) / 2, (int)p.y + 22,
+                  DIM, CELLS[i].name);
     }
-
-    /* The alternative palettes, which on the sheet needed whole second sets of
-       frames drawn out. */
-    font_draw(g, 4, 150, YELLOW, "RECOLOURS");
-    Vec2 a = { 56.0f, 186.0f };
-    Vec2 b = { 152.0f, 186.0f };
-    shape_draw_pal(g, SHP_FIGHTER, a, 0.0f, S, &SHAPE_PAL_FIGHTER_CAPTURED, 1.0f);
-    shape_draw_pal(g, SHP_BOSS,    b, 0.0f, S, &SHAPE_PAL_BOSS_HIT,         1.0f);
-    font_draw(g, (int)a.x - font_width("CAPTURED") / 2, 212, DIM, "CAPTURED");
-    font_draw(g, (int)b.x - font_width("BOSS HIT") / 2, 212, DIM, "BOSS HIT");
 
     /* The font is vector artwork too, and the only way to judge glyphs is to
        see them together at a size where the strokes are separable. */
-    font_draw(g, 4, 228, YELLOW, "FONT");
-    font_draw_scaled(g, 4.0f, 240.0f, DIM, "ABCDEFGHIJKLM", 1.6f);
-    font_draw_scaled(g, 4.0f, 256.0f, DIM, "NOPQRSTUVWXYZ", 1.6f);
-    font_draw_scaled(g, 4.0f, 272.0f, DIM, "0123456789-:/", 1.6f);
+    font_draw(g, 4, 214, YELLOW, "FONT");
+    font_draw_scaled(g, 4.0f, 228.0f, DIM, "ABCDEFGHIJKLM", 1.6f);
+    font_draw_scaled(g, 4.0f, 244.0f, DIM, "NOPQRSTUVWXYZ", 1.6f);
+    font_draw_scaled(g, 4.0f, 260.0f, DIM, "0123456789-:/", 1.6f);
+
+    font_draw(g, 4, GAME_H - 9, CYAN, "TAB VIEW  ESC QUIT");
 }
 
 /* ---------------------------------------------------------------- browser */

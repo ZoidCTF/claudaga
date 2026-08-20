@@ -96,6 +96,22 @@ static const Vec2 CTRL_RETURN[] = {
     {  68, 166 }, {  96, 156 },
 };
 
+/* Challenging-stage passes. Unlike every other path here these begin and end
+   off-screen: nothing forms up in a bonus round, so a flyer that survives its
+   run simply leaves. A big sweeping S down the screen, and a climb through a
+   loop and out of the top. */
+static const Vec2 CTRL_CHAL_A[] = {
+    {  40, -30 }, {  70,  26 }, {  38,  76 }, {  56, 130 },
+    { 118, 160 }, { 176, 194 }, { 150, 250 }, {  96, 300 },
+    {  60, 340 },
+};
+
+static const Vec2 CTRL_CHAL_B[] = {
+    {  24, 320 }, {  40, 250 }, {  92, 214 }, { 146, 186 },
+    { 160, 136 }, { 124, 106 }, {  78, 116 }, {  66,  70 },
+    {  96,  16 }, { 132, -34 },
+};
+
 /* --------------------------------------------------------------- flights */
 
 /* Eight enemies per flight, alternating between two mirrored paths so the
@@ -122,6 +138,12 @@ static const Flight FLIGHTS[FLIGHT_COUNT] = {
 
 /* Ticks between attacks once the wave is up. */
 #define ATTACK_INTERVAL 105
+
+/* What a bonus round pays lives in the header, since the game shows the
+   totals: CHALLENGE_HIT_SCORE per flyer caught, CHALLENGE_PERFECT for catching
+   every one. The perfect bonus is worth far more than the sum of the hits,
+   which is what makes a challenging stage a thing to be good at rather than a
+   free forty shots. */
 
 /* Minimum gap between two enemies entering the same return lane. At entry
    speed this works out around 50px of daylight, comfortable for a 16px
@@ -312,9 +334,13 @@ void wave_init(Wave *w)
     path_build(&w->paths[PATH_TOP_DIVE_L], CTRL_TOP_DIVE, ARRAY_COUNT(CTRL_TOP_DIVE));
     path_build(&w->paths[PATH_SWEEP_L],    CTRL_SWEEP,    ARRAY_COUNT(CTRL_SWEEP));
     path_build(&w->paths[PATH_RETURN_L],   CTRL_RETURN,   ARRAY_COUNT(CTRL_RETURN));
+    path_build(&w->paths[PATH_CHAL_A_L],   CTRL_CHAL_A,   ARRAY_COUNT(CTRL_CHAL_A));
+    path_build(&w->paths[PATH_CHAL_B_L],   CTRL_CHAL_B,   ARRAY_COUNT(CTRL_CHAL_B));
     path_mirror(&w->paths[PATH_TOP_DIVE_R], &w->paths[PATH_TOP_DIVE_L]);
     path_mirror(&w->paths[PATH_SWEEP_R],    &w->paths[PATH_SWEEP_L]);
     path_mirror(&w->paths[PATH_RETURN_R],   &w->paths[PATH_RETURN_L]);
+    path_mirror(&w->paths[PATH_CHAL_A_R],   &w->paths[PATH_CHAL_A_L]);
+    path_mirror(&w->paths[PATH_CHAL_B_R],   &w->paths[PATH_CHAL_B_L]);
 
     w->show_paths      = false;
     w->attacks_enabled = true;
@@ -328,7 +354,8 @@ void wave_init(Wave *w)
     wave_restart(w);
 }
 
-void wave_restart(Wave *w)
+/* Everything the two kinds of stage share. */
+static void wave_reset_common(Wave *w)
 {
     w->tick = 0;
     w->next_attack = 0;
@@ -364,6 +391,52 @@ void wave_restart(Wave *w)
         e->beam_t       = 0;
         e->has_captive  = false;
     }
+}
+
+void wave_restart(Wave *w)
+{
+    w->challenge      = false;
+    w->challenge_hits = 0;
+    wave_reset_common(w);
+}
+
+void wave_restart_challenge(Wave *w, int variant)
+{
+    wave_reset_common(w);
+    w->challenge      = true;
+    w->challenge_hits = 0;
+
+    ShapeId shape = (ShapeId)(SHP_BONUS_FIRST + (variant % SHP_BONUS_COUNT));
+
+    /* Eight groups of five, alternating the two passes and the side they come
+       in on, so the screen is crossed from several directions at once. */
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        Enemy *e = &w->enemies[i];
+        int group  = i / 5;
+        int within = i % 5;
+
+        static const PathId LANES[4] = {
+            PATH_CHAL_A_L, PATH_CHAL_A_R, PATH_CHAL_B_L, PATH_CHAL_B_R,
+        };
+
+        e->shape       = shape;
+        e->state       = ENEMY_WAITING;
+        e->path        = LANES[(group + variant) % 4];
+        e->launch_tick = group * 74 + within * 13;
+        e->speed       = ENTRY_SPEED * 1.15f;
+        e->pos         = w->paths[e->path].pt[0];
+        e->heading     = HEADING_S;
+    }
+}
+
+bool wave_is_challenge(const Wave *w)
+{
+    return w->challenge;
+}
+
+int wave_challenge_hits(const Wave *w)
+{
+    return w->challenge_hits;
 }
 
 /* ---------------------------------------------------------------- update */
@@ -583,6 +656,15 @@ bool wave_hit(Wave *w, int index, int *score, int *popup)
         return false;
     }
 
+    /* A bonus round pays a flat rate and keeps count; there are no ranks and
+       nothing is in formation, so the usual table does not apply. */
+    if (w->challenge) {
+        ++w->challenge_hits;
+        *score = CHALLENGE_HIT_SCORE;
+        e->state = ENEMY_DEAD;
+        return true;
+    }
+
     bool diving = (e->state == ENEMY_DIVING);
 
     if (is_boss(e->shape)) {
@@ -726,7 +808,7 @@ void wave_update(Wave *w, float player_x)
        has to latch: the instant the first enemy leaves its slot the formation
        is no longer complete, so testing it every tick would fire one attack
        and then never another. A non-zero next_attack is that latch. */
-    if (w->attacks_enabled && !w->attacks_paused) {
+    if (w->attacks_enabled && !w->attacks_paused && !w->challenge) {
         if (w->next_attack == 0 && wave_all_formed(w)) {
             w->next_attack = w->tick + ATTACK_INTERVAL;
         }
@@ -753,7 +835,11 @@ void wave_update(Wave *w, float player_x)
         case ENEMY_ENTERING:
             e->s += e->speed;
             if (e->s >= p->length) {
-                begin_join(e, p);
+                /* In a bonus round the path runs off the edge of the screen
+                   and that is the end of it - nothing forms up, and anything
+                   not shot on the way through simply escapes. */
+                if (w->challenge) e->state = ENEMY_DEAD;
+                else              begin_join(e, p);
             } else {
                 e->pos     = path_point(p, e->s);
                 e->heading = path_heading(p, e->s);

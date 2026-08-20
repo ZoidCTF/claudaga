@@ -60,6 +60,11 @@ typedef struct {
     bool   rescue_active;
     Vec2   rescue_pos;
 
+    /* What the last bonus round paid, held so the between-stage pause can
+       show it. */
+    int    bonus_hits;
+    int    bonus_award;
+
     /* Debug aid: stops the fighter dying, so a long --at run reaches the tick
        it was asked for instead of restarting halfway. */
     bool   invulnerable;

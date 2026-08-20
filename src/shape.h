@@ -53,8 +53,20 @@ typedef enum {
     SHP_BOSS,
     SHP_PLAYER_SHOT,
     SHP_ENEMY_SHOT,
+
+    /* Challenging-stage flyers. The arcade fields a different set each bonus
+       round; these four cycle. */
+    SHP_MOTH,
+    SHP_SCORPION,
+    SHP_DART,
+    SHP_ORB,
+
     SHP_COUNT
 } ShapeId;
+
+/* The bonus flyers in order, for a challenging stage to pick from. */
+#define SHP_BONUS_FIRST SHP_MOTH
+#define SHP_BONUS_COUNT 4
 
 const Shape *shape_get(ShapeId id);
 const char  *shape_name(ShapeId id);

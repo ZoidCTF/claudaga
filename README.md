@@ -5,6 +5,10 @@ scripted entry into formation and then attacks — enemies dive, fire back, leav
 the screen and come round again. Shots kill, collisions kill, the score counts,
 and clearing a wave starts the next stage.
 
+A Boss Galaga will drop out of formation and try to take your fighter with a
+tractor beam; shoot it and you get the fighter back as a second hull. Every
+fourth stage from the third is a challenging stage.
+
 Everything that flies is **vector artwork**, drawn as coloured triangles rather
 than blitted from a sheet. The game renders at whatever size the window is, the
 flyers turn to any angle, and it needs no sprite sheet to run.
@@ -377,6 +381,60 @@ failed state reset. `--trace` prints the state of every new wave for exactly
 this reason; it reports stray shots and pre-damaged bosses at each stage
 boundary, and reads zero for both.
 
+### Dying clears the board
+
+When the fighter is destroyed every diver is recalled to its return lane, the
+missiles in the air are dropped, and no new attack launches until there is a
+ship to attack again. The respawn additionally waits for the spot to be clear
+rather than only for the explosion to finish.
+
+Without that, dying and reappearing straight into an enemy still mid-dive cost
+the next life immediately. Measured with a stationary fighter, which is the
+failing case - the autofire harness sweeps side to side and moves off the spawn
+point before anything can reach it, so it did not reproduce the bug at all.
+Standing still over 25,000 ticks the shortest gap between deaths was 85 ticks
+before the change and 139 after, against a respawn wait of 70: the 85 was a ship
+that lasted fifteen ticks.
+
+## Capture and the dual fighter
+
+Instead of diving, a boss sometimes descends, hangs over the fighter and opens a
+tractor beam. Caught, the fighter is drawn up the cone tumbling, costs a life,
+and rides home underneath its captor in enemy colours. Shoot that boss and the
+captive falls free, flies down and docks alongside the replacement.
+
+A dual fighter is two hulls, not one wide one: both are real targets, both
+shoot, and it is allowed twice as many shots in the air, which is most of what
+makes the rescue worth attempting. A hit takes the rescued hull rather than a
+life, so the pair buys a mistake. One caught in a beam loses the wingman instead
+of being captured.
+
+The beam is geometry - bands sliding down a widening cone, where the movement is
+the whole effect, since a static gradient reads as a shape rather than a beam.
+Free recolouring is what makes the captive cheap: it is the fighter's own
+artwork in the enemy palette, upside down.
+
+Hover height and beam length have to be chosen together. The first attempt
+hovered at y=104 with a beam 78 long, which stops eighty pixels short of the
+fighter's row at 264, so no capture was possible at all.
+
+## Challenging stages
+
+Every fourth stage from the third - 3, 7, 11 - is a bonus round. Forty flyers
+cross the screen in eight groups of five along paths that begin and end
+off-screen; nothing forms up, nothing attacks, nothing fires, and nothing can
+hurt the fighter. Anything not shot on the way through simply escapes.
+
+They reuse the entry machinery exactly: a challenging-stage flyer runs the same
+`ENEMY_ENTERING` state along the same kind of path, and the only difference is
+what happens when the path runs out - a normal enemy peels into its slot, a
+bonus one is gone.
+
+Catching one pays 100; catching all forty pays a further 10,000, deliberately
+worth far more than the sum of the hits so the round is something to be good at
+rather than a free forty shots. Four bonus flyers - moth, scorpion, dart and orb
+- cycle through the rounds. The arcade fields more sets than that.
+
 ### The wave has its own random generator
 
 Worth recording because it was a measurement bug, not just a style choice. The
@@ -423,22 +481,20 @@ to *behaves like Galaga*.
 
 ## Next
 
-Still on the sheet rather than in vectors: the tractor beam, the stage flags
-along the bottom right (removed for now, since they were sheet art wired to
-nothing), and the sixteen challenging-stage flyers. Drawing those as shapes is
-what would let the sheet leave the repository altogether.
+The sheet has nothing left that the game needs. The tractor beam and the
+challenging-stage flyers are drawn as shapes now, and the only thing still owed
+to it is the stage-flag row along the bottom right, which was removed rather
+than converted because it was sheet art wired to nothing. Draw six little
+shields and drive them off the stage count and `assets/` can go, taking the
+copyright caveat with it.
 
-`atlas.c` has been trimmed to what the browser actually needs — `atlas_pose`,
-`atlas_idle_frame` and `atlas_missile_dir` are gone, along with `gfx_blit_flip`
-and `gfx_blit_rot`. What remains is the sheet's rect table, and it cannot go
-until the tractor beam, the stage flags and the challenging-stage flyers are
-drawn as shapes, because the browser is how that artwork gets designed from the
-original.
+`atlas.c` is already trimmed to what the browser needs. It is reference
+material, not a dependency: the game starts and plays without the file present.
 
-Mechanically: the tractor beam capture and the dual fighter are the marquee
-feature still missing; then the formation's side-to-side sway, a difficulty ramp
-so the attack rate climbs with the stage rather than sitting fixed, and the
-challenging stages.
+Mechanically: the formation's side-to-side sway, and a difficulty ramp so the
+attack rate, dive speed and number of simultaneous divers climb with the stage
+instead of sitting at their stage-one values. The arcade also fields more than
+four sets of challenging-stage flyers, and varies their patterns per round.
 
-Smaller gaps: there is no sound, and the extra-life award at 20,000 points is
-not implemented.
+Smaller gaps: there is no sound, the extra-life award at 20,000 points is not
+implemented, and the end-of-game hit-ratio screen is missing.
