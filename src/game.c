@@ -153,6 +153,7 @@ void game_restart(Game *g)
 
     g->bonus_hits  = 0;
     g->bonus_award = 0;
+    g->finished    = false;
 
     fx_reset(&g->fx);
     start_stage(g);
@@ -422,13 +423,22 @@ void game_update(Game *g, const Uint8 *keys)
        Boss Galagas turn up already damaged. */
     advance_shots(g);
 
-    /* Once the crew is gone the wave keeps flying behind the message, then the
-       whole thing starts over. */
+    /* Once the crew is gone the wave keeps flying behind the message. When it
+       has been up long enough the game reports that it is finished rather than
+       quietly starting itself over - being dropped back into a fresh stage 1
+       with no acknowledgement reads as a glitch. */
     if (g->game_over > 0) {
         wave_update(&g->wave, g->player.x);
-        if (--g->game_over == 0) game_restart(g);
+        if (--g->game_over == 0) {
+            g->finished = true;
+            if (g->trace) {
+                printf("tick %d: game over, score %d, stage %d\n",
+                       g->tick, g->score, g->stage);
+            }
+        }
         return;
     }
+    if (g->finished) return;   /* held until someone restarts or leaves */
 
     /* Between stages: hold briefly on an empty screen, then send in the next
        wave. Nothing else about a stage changes yet - see the README. */

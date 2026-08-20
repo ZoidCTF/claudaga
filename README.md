@@ -53,13 +53,21 @@ cycles to the game and the three tools behind it.
 
 | View | Keys |
 | --- | --- |
-| Title *(default)* | `↑` `↓` select, `Enter` confirm, `Esc` quit |
+| Title *(default)* | `↑` `↓` select, `Enter` confirm |
 | Play | `←` `→` move, `Space` fire, `R` restart, `P` show paths and headings, `A` toggle attacks |
 | Shape browser | the vector artwork and the font, at a size where they can be judged |
 | Pose check | `←` `→` change shape |
 | Sprite browser | `←` `→` page the original arcade sheet — reference only |
 
-`Esc` quits.
+`Esc` always heads back towards the menu and never ends the process: out of
+Options first, then out of whatever view is up. The only ways out are the QUIT
+item and closing the window.
+
+Running out of lives returns to the title rather than restarting. The game does
+not restart itself — it reports that it is finished and lets whatever is driving
+it decide, which is how the menu gets a look in. A headless run has nobody to
+show a menu to, so `--at` starts a fresh game instead; both go through the same
+function, so the two cannot drift apart.
 
 Flags: `--title` / `--scene` / `--pose` / `--shapes` / `--browser` pick a
 starting view — and `--at` or `--stats` without one implies the game, since
@@ -445,6 +453,9 @@ drifting at different rates would be obvious the moment the game started.
 
 Options is a placeholder. It is reachable from the title rather than sitting in
 the `Tab` rotation, and says so.
+
+Running out of lives comes back here. Silently dropping the player into a fresh
+stage 1 reads as a glitch rather than as an ending.
 
 ## Stage flags
 

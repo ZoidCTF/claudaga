@@ -65,6 +65,11 @@ typedef struct {
     int    bonus_hits;
     int    bonus_award;
 
+    /* Set when the game-over message has finished. The game does not restart
+       itself: it says it is done and lets whatever is driving it decide, which
+       is how the title screen gets a look in. */
+    bool   finished;
+
     /* Debug aid: stops the fighter dying, so a long --at run reaches the tick
        it was asked for instead of restarting halfway. */
     bool   invulnerable;

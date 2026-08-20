@@ -20,6 +20,10 @@
 
 #define SHEET_PATH "assets/galaga_sheet.png"
 
+/* A headless fast-forward starts a fresh game rather than stopping on the
+   menu. Flip this to exercise the interactive path through --at. */
+#define WARMUP_TO_TITLE false
+
 static const SDL_Color YELLOW = { 255, 216,   0, 255 };
 static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color DIM    = { 144, 144, 160, 255 };
@@ -291,6 +295,26 @@ static void pose_draw(Gfx *g, int subject)
 
 /* ------------------------------------------------------------------- main */
 
+/* One simulation tick of the play view, including what happens when the game
+   reports itself finished. Shared so the interactive loop and the headless
+   fast-forward cannot drift apart: `to_title` hands control back to the menu,
+   which is what a person should see, while a headless run has nobody to show a
+   menu to and simply starts again. */
+static void play_tick(Game *game, const Uint8 *keys, bool to_title,
+                      View *view, int *menu_sel)
+{
+    game_update(game, keys);
+    if (!game->finished) return;
+
+    if (to_title) {
+        game->finished = false;
+        *menu_sel      = MENU_START;
+        *view          = VIEW_TITLE;
+    } else {
+        game_restart(game);
+    }
+}
+
 static void usage(void)
 {
     fprintf(stderr,
@@ -399,7 +423,7 @@ int main(int argc, char **argv)
             warm_keys[SDL_SCANCODE_LEFT]  = (Uint8)(leftward ? 1 : 0);
             warm_keys[SDL_SCANCODE_RIGHT] = (Uint8)(leftward ? 0 : 1);
         }
-        game_update(&game, warm_keys);
+        play_tick(&game, warm_keys, WARMUP_TO_TITLE, &view, &menu_sel);
     }
 
     /* Fixed 60Hz steps with an accumulator, so the simulation does not change
@@ -420,9 +444,12 @@ int main(int argc, char **argv)
             } else if (ev.type == SDL_KEYDOWN && !ev.key.repeat) {
                 switch (ev.key.keysym.sym) {
                 case SDLK_ESCAPE:
-                    /* Escape backs out of options; anywhere else it quits. */
-                    if (options) options = false;
-                    else         running = false;
+                    /* Escape always heads towards the menu and never kills the
+                       process: out of options first, then out of whatever view
+                       is up. On the title itself there is nowhere further back
+                       to go, and QUIT is the way out. */
+                    if (options)                 options = false;
+                    else if (view != VIEW_TITLE) view = VIEW_TITLE;
                     break;
                 case SDLK_TAB:
                     if (!options) view = (View)((view + 1) % VIEW_COUNT);
@@ -492,7 +519,7 @@ int main(int argc, char **argv)
         while (accum >= STEP) {
             accum -= STEP;
             ++tick;
-            if (view == VIEW_PLAY) game_update(&game, keys);
+            if (view == VIEW_PLAY) play_tick(&game, keys, true, &view, &menu_sel);
             else                   game_background_update();
         }
 
