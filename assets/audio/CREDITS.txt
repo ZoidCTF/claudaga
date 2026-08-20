@@ -1,0 +1,40 @@
+Claudaga - audio credits
+========================
+
+Everything here is CC0 (Creative Commons Zero, public domain). None of it
+requires attribution; it is credited anyway because the people who made it
+deserve it, and because a future reader should be able to check the licence
+without having to go and find the source again.
+
+No audio from the original Galaga is used, and none of this is a transcription
+of it. The music was chosen to sit in the same chiptune idiom, nothing more -
+Galaga's own music and sound are Namco's.
+
+Sound effects
+-------------
+  shot_*.ogg      laserSmall_000/002/004
+  efire_*.ogg     laserRetro_000/002/004
+  boom_*.ogg      explosionCrunch_000/002/003
+  bosshit_*.ogg   impactMetal_001/003
+  die_*.ogg       lowFrequency_explosion_000/001
+  beam_0.ogg      forceField_002
+
+    from "Sci-fi Sounds" (v1.0) by Kenney - https://kenney.nl/assets/sci-fi-sounds
+    CC0. Unmodified; renamed only.
+
+Music and jingles
+-----------------
+  title.mp3       "8Bit Title Screen" by Joth
+                  https://opengameart.org/content/8bit-title-screen
+                  CC0. Unmodified.
+
+  bonus.wav       "Venus", from "NES Shooter Music (5 tracks, 3 jingles)"
+  jingle_stage.wav    ("Warp Jingle")
+  jingle_extra.wav    ("Intro Jingle")
+  jingle_perfect.wav  ("Win Jingle")
+                  by SketchyLogic
+                  https://opengameart.org/content/nes-shooter-music-5-tracks-3-jingles
+                  CC0. Downsampled from 44100 Hz to 22050 Hz mono; "Venus" is
+                  additionally cut to 15 seconds - roughly the length of a
+                  challenging stage - at the quietest point in a 13.5-17.0s
+                  window, with a 0.25s fade over the cut.

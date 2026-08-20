@@ -22,9 +22,12 @@ cloning:
 tools\fetch_deps.bat
 ```
 
-That pulls SDL2 2.32.10 into `third_party/`. The version is pinned: SDL2 ships
-prebuilt `.lib` and `.dll` files, so an unplanned upgrade would change what
-actually links. Re-running it is harmless — it skips anything already there.
+That pulls SDL2 2.32.10 and SDL2_mixer 2.8.2 into `third_party/`. Both versions
+are pinned: they ship prebuilt `.lib` and `.dll` files, so an unplanned upgrade
+would change what actually links. Only `SDL2_mixer.dll` is taken from the mixer
+archive — the optional decoder DLLs beside it are for formats this game does not
+use, and Vorbis and MP3 are handled by code built into SDL2_mixer itself.
+Re-running it is harmless — it skips anything already there.
 Then:
 
 ```bash
@@ -32,8 +35,8 @@ build.bat
 ```
 
 `build.bat` finds Visual Studio through `vswhere`, enters the x64 MSVC
-environment, compiles everything in `src/`, and copies `SDL2.dll` next to the
-executable. Pass `release` for an optimised, windowed build; the default is a
+environment, compiles everything in `src/`, and copies both DLLs and the
+`assets/` folder next to the executable. Pass `release` for an optimised, windowed build; the default is a
 debug build on the console subsystem so `printf` and asserts are visible.
 
 Compiler output is teed to `build/build.log` and the final line reports a
@@ -42,8 +45,10 @@ build is `/W4` and currently warning-free; the count exists because warnings
 scroll off the top and a build that only says "OK" reads as clean when it is
 not.
 
-Run it from anywhere; it loads no assets. The one file it touches is the high
-score, which lives wherever `SDL_GetPrefPath` says user data belongs:
+Run it from anywhere — the audio is found relative to the executable through
+`SDL_GetBasePath` rather than the working directory, which is why `build.bat`
+stages it there. The one file it writes is the high score, which lives wherever
+`SDL_GetPrefPath` says user data belongs:
 
 ```bash
 build\claudaga.exe
@@ -77,7 +82,8 @@ fast-forwards the simulation before the first frame, `--shot out.bmp` renders
 one frame and exits, `--stats N` runs the wave headless for N ticks and reports
 what the stage's difficulty works out to and how the wave behaved under it,
 `--stage N` starts on a later stage so that difficulty can be measured without
-playing up to it, and `--trace` logs each stage handover.
+playing up to it, `--mute` opens no audio device, and `--trace` logs each stage
+handover. `--shot` and `--stats` mute themselves.
 
 `--trace` reports each stage handover: what was still in the air when the stage
 ended, and whether the new wave arrives with stray shots or already-damaged
@@ -533,6 +539,60 @@ at zero, so it is also motionless while the wave is still flying in.
 slots, taken from the enemies rather than from the offset: it reads -10.0 to
 +10.0.
 
+## Sound
+
+Sound arrived last, and is the only part of the game that is not generated from
+first principles. It runs through SDL_mixer at 22050 Hz — the rate the assets
+are, and the rate a board of this vintage would have run at anyway — with a
+512-frame buffer. That last number is not arbitrary: it is about 23ms, and at
+60Hz a shot whose sound lands two frames after the trigger reads as lag rather
+than as a shot.
+
+Two rules shape `audio.c`, and both are about what sound is not allowed to do.
+
+**It is never load-bearing.** Every entry point works whether or not a device
+opened, whether or not SDL_mixer initialised, and whether or not a single file
+was found. Callers do not check a return value because there is nothing to
+check. A machine with no sound card plays in silence rather than refusing to
+start, and a missing file costs one effect rather than the run.
+
+**It never perturbs the simulation.** The variant picker draws from its own
+generator, for precisely the reason the wave has one — if it shared with
+anything the game reads, muting would silently change which enemy attacked next
+and every headless measurement in this project would be measuring a different
+game from the one being played. That is verified rather than asserted: a 6000
+tick traced run produces byte-identical events with sound on and with `--mute`.
+
+Several effects have two or three near-identical takes and one is chosen at
+random per play, which is what stops four enemies dying inside a second from
+turning into an obvious machine-gun repeat of one sample. When every channel is
+busy an effect is dropped rather than stealing one — the fullest moment in the
+mix is exactly where a cut-off sample sounds worst.
+
+### Where it came from, and what is wrong with it
+
+Everything is CC0, credited in `assets/audio/CREDITS.txt`: the effects are from
+Kenney's *Sci-fi Sounds*, the title music is Joth's *8Bit Title Screen*, and the
+bonus round and jingles come from SketchyLogic's *NES Shooter Music*. The
+jingles and the bonus track were downsampled to 22050 Hz mono, and the bonus
+track was cut to fifteen seconds — roughly the length of a challenging stage —
+at the quietest point in a 13.5-to-17-second window, which lands on a phrase
+boundary more often than a round number would, with a quarter-second fade over
+the cut.
+
+None of it is Galaga's audio and none of it is a transcription; that music and
+those sounds are Namco's. The chiptune was picked to sit in the same idiom.
+
+Worth saying plainly, though: **the effects are the weakest part of the
+project.** They are modern, sample-based, slightly reverberant sci-fi sounds,
+and Galaga's were pure square and noise waveforms off a 1981 Namco WSG — short,
+dry and harsh. Sitting next to artwork that was deliberately rebuilt to match
+the original's proportions, they are the one element that gives away that it is
+a modern game. Generating them instead, the way the sprites were replaced by
+polygons, would be maybe two hundred lines and would sound materially more
+correct. The plumbing above does not care where a `Mix_Chunk` came from, so that
+swap is cheap whenever it is wanted.
+
 ## Scoring, and what a run is worth
 
 Kills pay on the arcade's scale, and a Boss Galaga killed mid-dive pays for the
@@ -643,8 +703,7 @@ to *behaves like Galaga*.
 
 ## Next
 
-There is no sound at all, which is the largest single absence — the entry march,
-the capture siren and the dual-fighter fanfare are a great deal of what Galaga
-sounds like, and the Options screen has nothing to configure until they exist.
-No controller support either; the fighter is keyboard-only. Those two are the
-list.
+No controller support; the fighter is keyboard-only. That is the list.
+
+The Options screen now has something it could plausibly configure — separate
+effect and music volumes — and does not yet configure it.

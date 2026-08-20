@@ -20,6 +20,7 @@
 #include "font.h"
 #include "shape.h"
 #include "game.h"
+#include "audio.h"
 
 /* A headless fast-forward starts a fresh game rather than stopping on the
    menu. Flip this to exercise the interactive path through --at. */
@@ -239,7 +240,7 @@ static void usage(void)
             "                [--subject N] [--scale N]\n"
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
-            "                [--stage N]\n"
+            "                [--stage N] [--mute]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -258,6 +259,7 @@ int main(int argc, char **argv)
     bool        paths     = false;
     bool        observe   = false;
     int         first_stage = 1;
+    bool        mute      = false;
     bool        autofire  = false;
     bool        trace     = false;
 
@@ -276,6 +278,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--observe"))                  observe = true;
         else if (!strcmp(argv[i], "--autofire"))                 autofire = true;
         else if (!strcmp(argv[i], "--trace"))                    trace = true;
+        else if (!strcmp(argv[i], "--mute"))                     mute = true;
         else { usage(); return 1; }
     }
     if (scale < 1) scale = 1;
@@ -288,6 +291,12 @@ int main(int argc, char **argv)
 
     Gfx g;
     if (!gfx_init(&g, "Claudaga", scale)) return 1;
+
+    /* A headless run mutes itself. Opening a device to render one screenshot
+       is pointless, and a --stats run would fire thousands of effects at a
+       device nobody is listening to - which is slow, and on some drivers is
+       slow enough to matter to a measurement. */
+    audio_init(!mute && !shot_path && stats <= 0);
 
     static Game game;   /* several hundred KB of baked paths; not stack-sized */
     game_init(&game);
@@ -310,6 +319,7 @@ int main(int argc, char **argv)
     if (stats > 0) {
         for (int i = 0; i < stats; ++i) wave_update(&game.wave, game.player.x);
         wave_print_stats(&game.wave);
+        audio_shutdown();
         gfx_shutdown(&g);
         return 0;
     }
@@ -338,8 +348,9 @@ int main(int argc, char **argv)
     Uint64 prev  = SDL_GetPerformanceCounter();
     double accum = 0.0;
 
-    int  tick    = 0;
-    bool running = true;
+    int  tick      = 0;
+    bool running   = true;
+    View shown     = view;
 
     while (running) {
         SDL_Event ev;
@@ -375,6 +386,7 @@ int main(int argc, char **argv)
                         if (menu_sel == MENU_START) {
                             game_restart(&game);
                             view = VIEW_PLAY;
+                            audio_music_stop();
                         } else if (menu_sel == MENU_OPTIONS) {
                             options = true;
                         } else {
@@ -413,6 +425,14 @@ int main(int argc, char **argv)
             }
         }
 
+        /* Leaving any view for the game silences whatever was playing. Doing
+           it on the transition rather than at the menu covers Tab as well,
+           which can drop straight into play from a shape tool. */
+        if (view != shown) {
+            if (view == VIEW_PLAY) audio_music_stop();
+            shown = view;
+        }
+
         Uint64 now = SDL_GetPerformanceCounter();
         accum += (double)(now - prev) / freq;
         prev = now;
@@ -422,8 +442,17 @@ int main(int argc, char **argv)
         while (accum >= STEP) {
             accum -= STEP;
             ++tick;
-            if (view == VIEW_PLAY) play_tick(&game, keys, true, &view, &menu_sel);
-            else                   game_background_update();
+            if (view == VIEW_PLAY) {
+                play_tick(&game, keys, true, &view, &menu_sel);
+            } else {
+                game_background_update();
+
+                /* Everything that is not the game runs under the title music -
+                   the menu, the options page and both shape tools. Asking for
+                   a track already playing does nothing, so this needs no state
+                   of its own. */
+                audio_music(MUSIC_TITLE);
+            }
         }
 
         gfx_begin_frame(&g);
@@ -441,6 +470,7 @@ int main(int argc, char **argv)
         gfx_end_frame(&g);
     }
 
+    audio_shutdown();
     gfx_shutdown(&g);
     return 0;
 }

@@ -14,14 +14,20 @@ set "CONFIG=%~1"
 if "%CONFIG%"=="" set "CONFIG=debug"
 
 set "SDL=%ROOT%third_party\SDL2"
+set "MIX=%ROOT%third_party\SDL2_mixer"
 if not exist "%SDL%\include\SDL.h" (
     echo [build] ERROR: SDL2 headers missing at %SDL%\include
+    exit /b 1
+)
+if not exist "%MIX%\include\SDL_mixer.h" (
+    echo [build] ERROR: SDL2_mixer headers missing at %MIX%\include
+    echo [build]        run tools\fetch_deps.bat
     exit /b 1
 )
 if not exist "%ROOT%build" mkdir "%ROOT%build"
 
 rem /W4 high warnings, /Zi debug info in a PDB, /wd4996 mutes CRT deprecations.
-set "CFLAGS=/nologo /W4 /wd4996 /Zi /std:c17 /I"%SDL%\include" /I"%ROOT%third_party" /I"%ROOT%src""
+set "CFLAGS=/nologo /W4 /wd4996 /Zi /std:c17 /I"%SDL%\include" /I"%MIX%\include" /I"%ROOT%third_party" /I"%ROOT%src""
 if /i "%CONFIG%"=="release" (
     set "CFLAGS=!CFLAGS! /O2 /DNDEBUG"
     set "SUBSYS=WINDOWS"
@@ -30,7 +36,7 @@ if /i "%CONFIG%"=="release" (
     set "SUBSYS=CONSOLE"
 )
 
-set "LIBS="%SDL%\lib\x64\SDL2.lib" "%SDL%\lib\x64\SDL2main.lib" shell32.lib"
+set "LIBS="%SDL%\lib\x64\SDL2.lib" "%SDL%\lib\x64\SDL2main.lib" "%MIX%\lib\x64\SDL2_mixer.lib" shell32.lib"
 
 echo [build] configuration: %CONFIG%
 
@@ -54,8 +60,15 @@ if not "%CLERR%"=="0" (
     exit /b 1
 )
 
-rem Stage the runtime DLL next to the exe.
+rem Stage the runtime DLLs next to the exe.
 if not exist "%ROOT%build\SDL2.dll" copy /y "%SDL%\lib\x64\SDL2.dll" "%ROOT%build\" >nul
+if not exist "%ROOT%build\SDL2_mixer.dll" copy /y "%MIX%\lib\x64\SDL2_mixer.dll" "%ROOT%build\" >nul
+
+rem Stage the audio beside the exe too. The game finds it through
+rem SDL_GetBasePath rather than the working directory, so it can be launched
+rem from anywhere - but that means the files have to actually be there.
+if not exist "%ROOT%build\assets" mkdir "%ROOT%build\assets"
+xcopy /y /q /e "%ROOT%assets" "%ROOT%build\assets\" >nul
 
 if not "%WARNS%"=="0" (
     echo [build] OK with %WARNS% warning^(s^) -^> build\claudaga.exe

@@ -1,4 +1,5 @@
 #include "formation.h"
+#include "audio.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -804,6 +805,7 @@ static void launch_attack(Wave *w, float player_x)
         if (leader->beam_pos.x > GAME_W - BEAM_BOT_HW) leader->beam_pos.x = GAME_W - BEAM_BOT_HW;
         leader->beam_t = 0;
         leader->state  = ENEMY_BEAMING;
+        audio_play(SFX_BEAM);
         ++w->dives_boss;
         return;
     }
@@ -955,6 +957,12 @@ static void enemy_fire(Wave *w, const Enemy *e, float player_x)
 
         float deg = (float)(atan2(fabs((double)dx), (double)dy) * 180.0 / M_PI);
         if (deg > w->shot_max_deg) w->shot_max_deg = deg;
+
+        /* Down here rather than at the top of the function: the aim rules
+           above turn plenty of would-be shots away, and a sound for a missile
+           that was never fired is a sound with nothing on screen to explain
+           it. */
+        audio_play(SFX_ENEMY_FIRE);
         return;
     }
 }

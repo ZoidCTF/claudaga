@@ -1,4 +1,5 @@
 #include "game.h"
+#include "audio.h"
 #include "font.h"
 
 #include <math.h>
@@ -237,9 +238,12 @@ static void start_stage(Game *g)
 {
     if (is_challenge_stage(g->stage)) {
         wave_restart_challenge(&g->wave, g->stage, (g->stage - 3) / 4);
+        audio_music(MUSIC_BONUS);
     } else {
         wave_restart(&g->wave, g->stage);
+        audio_music_stop();
     }
+    audio_play(SFX_STAGE);
 }
 
 /* ------------------------------------------------------------- collision */
@@ -307,6 +311,7 @@ static void kill_player(Game *g)
     g->player.alive   = false;
     g->player.respawn = RESPAWN_TICKS;
     fx_blast_player(&g->fx, player_pos(g));
+    audio_play(SFX_PLAYER_DIE);
 
     if (g->last_death_tick > 0) {
         int gap = g->tick - g->last_death_tick;
@@ -342,6 +347,7 @@ static void add_score(Game *g, int n)
                      ? EXTRA_LIFE_EVERY
                      : g->next_life + EXTRA_LIFE_EVERY;
         g->extra_msg = EXTRA_MSG_TICKS;
+        audio_play(SFX_EXTRA);
         if (g->trace) {
             printf("tick %d: extra fighter at %d, now %d in reserve, next at %d\n",
                    g->tick, g->score, g->player.lives - 1, g->next_life);
@@ -369,6 +375,7 @@ static void collide_shots(Game *g)
 
             sh->alive = false;
             ++g->shots_hit;   /* a boss that survives the hit still counts */
+            audio_play(killed ? SFX_ENEMY_DIE : SFX_BOSS_HIT);
             if (killed) {
                 add_score(g, score);
                 fx_blast_enemy(&g->fx, at);
@@ -498,6 +505,7 @@ static void fire(Game *g)
 
     for (int h = 0; h < hulls; ++h) spawn_shot(g, hull[h].x);
     g->fire_cooldown = FIRE_COOLDOWN;
+    audio_play(SFX_SHOT);
 }
 
 void game_update(Game *g, const Uint8 *keys)
@@ -649,6 +657,11 @@ void game_update(Game *g, const Uint8 *keys)
             g->bonus_hits  = wave_challenge_hits(&g->wave);
             g->bonus_award = (g->bonus_hits >= MAX_ENEMIES) ? CHALLENGE_PERFECT : 0;
             add_score(g, g->bonus_award);
+
+            /* The round is over, so its music goes rather than running on
+               under the payout. */
+            audio_music_stop();
+            if (g->bonus_award > 0) audio_play(SFX_PERFECT);
             if (g->trace) {
                 printf("tick %d: bonus round over - %d of %d caught, bonus %d\n",
                        g->tick, g->bonus_hits, MAX_ENEMIES, g->bonus_award);
