@@ -20,6 +20,10 @@ static const SDL_Color RED    = { 255,  72,  72, 255 };
    the divers home, but one already close to the bottom takes a moment to leave,
    and reappearing inside it costs the next life straight away. */
 #define SPAWN_CLEAR_RADIUS 34.0f
+
+#define CAPTURE_LIFT   1.7f    /* how fast a caught fighter is drawn up   */
+#define CAPTURE_SPIN   9.0f    /* degrees per tick while it is being taken */
+#define RESCUE_SPEED   2.1f    /* a freed fighter's descent                */
 #define STAGE_PAUSE     120
 #define GAME_OVER_TICKS 240
 
@@ -130,10 +134,14 @@ void game_restart(Game *g)
     g->game_over   = 0;
     g->last_death_tick = 0;
 
-    g->player.x       = GAME_W / 2.0f;
-    g->player.alive   = true;
-    g->player.lives   = START_LIVES;
-    g->player.respawn = 0;
+    g->player.x        = GAME_W / 2.0f;
+    g->player.alive    = true;
+    g->player.dual     = false;
+    g->player.lives    = START_LIVES;
+    g->player.respawn  = 0;
+    g->player.captured = false;
+    g->player.cap_boss = -1;
+    g->rescue_active   = false;
 
     clear_shots(g);
     g->fire_cooldown = 0;
@@ -154,6 +162,51 @@ static Vec2 player_pos(const Game *g)
 {
     Vec2 p = { g->player.x, (float)PLAYER_Y };
     return p;
+}
+
+/* Where each hull sits. A single fighter is one at the centre; a dual is two
+   either side of it. Everything that needs to hit or be hit works through
+   this, so the pair is genuinely two targets rather than one wide one. */
+static int player_hulls(const Game *g, Vec2 *out)
+{
+    if (!g->player.dual) {
+        out[0] = player_pos(g);
+        return 1;
+    }
+    out[0].x = g->player.x - DUAL_OFFSET; out[0].y = (float)PLAYER_Y;
+    out[1].x = g->player.x + DUAL_OFFSET; out[1].y = (float)PLAYER_Y;
+    return 2;
+}
+
+/* A dual fighter that takes a hit loses the rescued hull and flies on as a
+   single. That is the point of rescuing one: it buys a hit, not a life. */
+static bool lose_wingman(Game *g, Vec2 at)
+{
+    if (!g->player.dual) return false;
+    g->player.dual = false;
+    fx_blast_player(&g->fx, at);
+    return true;
+}
+
+static void start_capture(Game *g, int boss)
+{
+    if (g->player.captured) return;
+
+    g->player.captured = true;
+    g->player.alive    = false;
+    g->player.cap_pos  = player_pos(g);
+    g->player.cap_spin = 0.0f;
+    g->player.cap_boss = boss;
+
+    if (g->trace) printf("tick %d: fighter captured by enemy %d\n", g->tick, boss);
+
+    /* A capture costs a fighter exactly as a death does, but there is no wreck
+       and the wave is not cleared - the boss is in the middle of something.
+
+       --observe still lets the capture happen and only skips the cost. Blocking
+       it outright meant the whole capture-and-rescue chain could not be watched
+       headlessly at all, and it is the most involved thing the game does. */
+    if (!g->invulnerable && --g->player.lives <= 0) g->game_over = GAME_OVER_TICKS;
 }
 
 static void kill_player(Game *g)
@@ -196,6 +249,7 @@ static void collide_shots(Game *g)
 
             Vec2 at = en->pos;
             int  score = 0, popup = 0;
+            int  held_before = wave_captive_holder(&g->wave);
             bool killed = wave_hit(&g->wave, e, &score, &popup);
 
             sh->alive = false;
@@ -203,6 +257,16 @@ static void collide_shots(Game *g)
                 g->score += score;
                 fx_blast_enemy(&g->fx, at);
                 if (popup > 0) fx_score(&g->fx, at, popup);
+
+                /* That was the boss carrying the captured fighter, so it comes
+                   back. It flies down from where its captor died. */
+                if (held_before == e && wave_captive_holder(&g->wave) < 0
+                    && !g->player.dual) {
+                    g->rescue_active = true;
+                    g->rescue_pos    = at;
+                    if (g->trace) printf("tick %d: captor destroyed, fighter freed\n",
+                                         g->tick);
+                }
             }
             break;
         }
@@ -213,15 +277,30 @@ static void collide_shots(Game *g)
 static void collide_player(Game *g)
 {
     if (!g->player.alive) return;
-    Vec2 p = player_pos(g);
+
+    Vec2 hull[2];
+    int  hulls = player_hulls(g, hull);
+
+    /* A beam takes the fighter rather than destroying it, and it is checked
+       first: being caught while an enemy happens to be overhead should read as
+       a capture, which is recoverable, not as a death. */
+    int boss = -1;
+    for (int h = 0; h < hulls; ++h) {
+        if (wave_beam_catch(&g->wave, hull[h], &boss)) {
+            if (!lose_wingman(g, hull[h])) start_capture(g, boss);
+            return;
+        }
+    }
 
     for (int i = 0; i < MAX_ENEMY_SHOTS; ++i) {
         EnemyShot *s = &g->wave.shot[i];
         if (!s->alive) continue;
-        if (dist2(s->pos, p) <= R_MISSILE_SHIP * R_MISSILE_SHIP) {
-            s->alive = false;
-            kill_player(g);
-            return;
+        for (int h = 0; h < hulls; ++h) {
+            if (dist2(s->pos, hull[h]) <= R_MISSILE_SHIP * R_MISSILE_SHIP) {
+                s->alive = false;
+                if (!lose_wingman(g, hull[h])) kill_player(g);
+                return;
+            }
         }
     }
 
@@ -230,9 +309,11 @@ static void collide_player(Game *g)
     for (int e = 0; e < MAX_ENEMIES; ++e) {
         const Enemy *en = &g->wave.enemies[e];
         if (en->state == ENEMY_DEAD || en->state == ENEMY_WAITING) continue;
-        if (dist2(en->pos, p) <= R_ENEMY_SHIP * R_ENEMY_SHIP) {
-            kill_player(g);
-            return;
+        for (int h = 0; h < hulls; ++h) {
+            if (dist2(en->pos, hull[h]) <= R_ENEMY_SHIP * R_ENEMY_SHIP) {
+                if (!lose_wingman(g, hull[h])) kill_player(g);
+                return;
+            }
         }
     }
 }
@@ -254,16 +335,34 @@ static void clear_shots(Game *g)
     for (int i = 0; i < MAX_SHOTS; ++i) g->shots[i].alive = false;
 }
 
-static void fire(Game *g)
+static int shots_in_air(const Game *g)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_SHOTS; ++i) if (g->shots[i].alive) ++n;
+    return n;
+}
+
+static void spawn_shot(Game *g, float x)
 {
     for (int i = 0; i < MAX_SHOTS; ++i) {
         if (g->shots[i].alive) continue;
         g->shots[i].alive = true;
-        g->shots[i].pos.x = g->player.x;
+        g->shots[i].pos.x = x;
         g->shots[i].pos.y = (float)(PLAYER_Y - 8);
-        g->fire_cooldown  = FIRE_COOLDOWN;
         return;
     }
+}
+
+static void fire(Game *g)
+{
+    Vec2 hull[2];
+    int  hulls = player_hulls(g, hull);
+    int  cap   = g->player.dual ? SHOTS_DUAL : SHOTS_SINGLE;
+
+    if (shots_in_air(g) + hulls > cap) return;
+
+    for (int h = 0; h < hulls; ++h) spawn_shot(g, hull[h].x);
+    g->fire_cooldown = FIRE_COOLDOWN;
 }
 
 void game_update(Game *g, const Uint8 *keys)
@@ -305,11 +404,30 @@ void game_update(Game *g, const Uint8 *keys)
 
     wave_update(&g->wave, g->player.x);
 
-    if (g->player.alive) {
+    if (g->player.captured) {
+        /* Drawn up the beam, turning over as it goes. It follows the boss
+           rather than a fixed point, so a captor that starts for home takes
+           the fighter with it. */
+        Vec2 boss = wave_enemy_pos(&g->wave, g->player.cap_boss);
+        float dx = boss.x - g->player.cap_pos.x;
+        float dy = boss.y - g->player.cap_pos.y;
+        float d  = sqrtf(dx * dx + dy * dy);
+
+        g->player.cap_spin += CAPTURE_SPIN;
+        if (d <= CAPTURE_LIFT) {
+            wave_attach_captive(&g->wave, g->player.cap_boss);
+            g->player.captured = false;
+            g->player.respawn  = RESPAWN_TICKS;
+        } else {
+            g->player.cap_pos.x += dx / d * CAPTURE_LIFT;
+            g->player.cap_pos.y += dy / d * CAPTURE_LIFT;
+        }
+    } else if (g->player.alive) {
         if (keys[SDL_SCANCODE_LEFT])  g->player.x -= PLAYER_SPEED;
         if (keys[SDL_SCANCODE_RIGHT]) g->player.x += PLAYER_SPEED;
 
-        const float half = CELL / 2.0f;
+        /* A dual fighter is twice as wide, so it stops sooner at the edges. */
+        float half = CELL / 2.0f + (g->player.dual ? DUAL_OFFSET : 0.0f);
         if (g->player.x < half)              g->player.x = half;
         if (g->player.x > GAME_W - half)     g->player.x = GAME_W - half;
 
@@ -327,6 +445,24 @@ void game_update(Game *g, const Uint8 *keys)
             && wave_area_clear(&g->wave, spot, SPAWN_CLEAR_RADIUS)) {
             g->player.alive = true;
             g->player.x     = spot.x;
+        }
+    }
+
+    if (g->rescue_active) {
+        /* Flies down to the fighter's row and docks. If there is no ship there
+           yet it simply keeps station until one comes back. */
+        float tx = g->player.x, ty = (float)PLAYER_Y;
+        float dx = tx - g->rescue_pos.x, dy = ty - g->rescue_pos.y;
+        float d  = sqrtf(dx * dx + dy * dy);
+        if (d <= RESCUE_SPEED) {
+            if (g->player.alive) {
+                g->player.dual   = true;
+                g->rescue_active = false;
+                if (g->trace) printf("tick %d: dual fighter docked\n", g->tick);
+            }
+        } else {
+            g->rescue_pos.x += dx / d * RESCUE_SPEED;
+            g->rescue_pos.y += dy / d * RESCUE_SPEED;
         }
     }
 
@@ -372,8 +508,21 @@ void game_draw(Gfx *gfx, const Game *g)
     }
 
     if (g->player.alive) {
-        Vec2 p = { g->player.x, (float)PLAYER_Y };
-        shape_draw(gfx, SHP_FIGHTER, p, HEADING_N, 1.0f);
+        Vec2 hull[2];
+        int  hulls = player_hulls(g, hull);
+        for (int h = 0; h < hulls; ++h) {
+            shape_draw(gfx, SHP_FIGHTER, hull[h], HEADING_N, 1.0f);
+        }
+    }
+
+    /* Being drawn up a beam: still the player's ship, tumbling. */
+    if (g->player.captured) {
+        shape_draw(gfx, SHP_FIGHTER, g->player.cap_pos, g->player.cap_spin, 1.0f);
+    }
+
+    /* A freed fighter on its way down to dock. */
+    if (g->rescue_active) {
+        shape_draw(gfx, SHP_FIGHTER, g->rescue_pos, HEADING_N, 1.0f);
     }
 
     fx_draw(gfx, &g->fx);

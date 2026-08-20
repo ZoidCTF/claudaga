@@ -152,6 +152,100 @@ static const Flight FLIGHTS[FLIGHT_COUNT] = {
 
 static bool is_boss(ShapeId s);
 
+/* ------------------------------------------------------------ the beam */
+
+/* The capture routine, in ticks. A boss drops out of formation, hangs there
+   with the beam open long enough to be worth dodging or shooting, then shuts
+   it and goes home. */
+#define BEAM_DESCEND  56
+#define BEAM_OPEN     18
+#define BEAM_HOLD     96
+#define BEAM_CLOSE    18
+#define BEAM_TOTAL    (BEAM_DESCEND + BEAM_OPEN + BEAM_HOLD + BEAM_CLOSE)
+
+/* The cone itself. It hangs below the boss and widens as it falls. */
+#define BEAM_LEN    122.0f
+#define BEAM_TOP_HW   5.0f
+#define BEAM_BOT_HW  26.0f
+#define BEAM_BANDS   16
+
+/* How far down the screen the boss hangs while the beam is open. The pair of
+   numbers has to be chosen together: hover plus length must actually reach
+   PLAYER_Y or the beam cannot catch anything, which is exactly what the first
+   attempt got wrong - it stopped eighty pixels short of the fighter's row and
+   no capture was possible at all. */
+#define BEAM_HOVER_Y 146
+
+/* How far the beam has opened, 0 to 1. */
+static float beam_open(const Enemy *e)
+{
+    int t = e->beam_t;
+    if (t < BEAM_DESCEND) return 0.0f;
+    t -= BEAM_DESCEND;
+    if (t < BEAM_OPEN)    return (float)t / (float)BEAM_OPEN;
+    t -= BEAM_OPEN;
+    if (t < BEAM_HOLD)    return 1.0f;
+    t -= BEAM_HOLD;
+    return 1.0f - (float)t / (float)BEAM_CLOSE;
+}
+
+/* Half-width of the cone at `depth` below its mouth. */
+static float beam_half_width(float depth, float open)
+{
+    float t = depth / (BEAM_LEN * open);
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return (BEAM_TOP_HW + (BEAM_BOT_HW - BEAM_TOP_HW) * t) * open;
+}
+
+bool wave_beam_catch(const Wave *w, Vec2 at, int *boss)
+{
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        const Enemy *e = &w->enemies[i];
+        if (e->state != ENEMY_BEAMING || e->has_captive) continue;
+
+        float open = beam_open(e);
+        if (open <= 0.05f) continue;
+
+        float depth = at.y - e->pos.y;
+        if (depth < 0.0f || depth > BEAM_LEN * open) continue;
+        if (fabsf(at.x - e->pos.x) > beam_half_width(depth, open)) continue;
+
+        if (boss) *boss = i;
+        return true;
+    }
+    return false;
+}
+
+void wave_attach_captive(Wave *w, int boss)
+{
+    if (boss < 0 || boss >= MAX_ENEMIES) return;
+    w->enemies[boss].has_captive = true;
+    w->captive_holder = boss;
+}
+
+Vec2 wave_enemy_pos(const Wave *w, int index)
+{
+    Vec2 v = { GAME_W * 0.5f, FORM_Y };
+    if (index < 0 || index >= MAX_ENEMIES) return v;
+    return w->enemies[index].pos;
+}
+
+int wave_captive_holder(const Wave *w)
+{
+    return w->captive_holder;
+}
+
+Vec2 wave_captive_pos(const Wave *w)
+{
+    Vec2 v = { GAME_W * 0.5f, FORM_Y };
+    int h = w->captive_holder;
+    if (h < 0 || h >= MAX_ENEMIES) return v;
+    v = w->enemies[h].pos;
+    v.y += 15.0f;    /* it rides underneath */
+    return v;
+}
+
 /* ------------------------------------------------------------------- rng */
 
 /* xorshift32. Small, adequate for choosing attackers, and - unlike rand() % n
@@ -225,6 +319,7 @@ void wave_init(Wave *w)
     w->show_paths      = false;
     w->attacks_enabled = true;
     w->attacks_paused  = false;
+    w->captive_holder  = -1;
 
     /* Seeded once, here rather than in wave_restart, so successive stages get
        different attack patterns while a whole run stays reproducible. */
@@ -238,6 +333,7 @@ void wave_restart(Wave *w)
     w->tick = 0;
     w->next_attack = 0;
     w->dives_boss = w->dives_butterfly = w->dives_bee = 0;
+    w->captive_holder = -1;
     w->min_lane_gap = 1e9f;
     w->shot_max_deg = 0.0f;
     for (int i = 0; i < MAX_DIVERS; ++i) w->dive_refs[i] = 0;
@@ -265,6 +361,8 @@ void wave_restart(Wave *w)
         e->dive_lateral = 0.0f;
         e->dive_formup  = 1.0f;
         e->hits         = 0;
+        e->beam_t       = 0;
+        e->has_captive  = false;
     }
 }
 
@@ -402,6 +500,23 @@ static void launch_attack(Wave *w, float player_x)
 
     Enemy *leader = &w->enemies[ready[type][rng_below(w, n[type])]];
 
+    /* A boss with no captive already in hand sometimes goes for the fighter
+       instead of shooting at it. Kept to a minority of boss attacks: the beam
+       ties the boss up for three seconds and is the most dangerous thing on
+       the board, so it wants to be an event rather than the routine. */
+    if (type == TYPE_BOSS && w->captive_holder < 0 && rng_below(w, 3) == 0) {
+        leader->beam_from = leader->pos;
+        leader->beam_pos.x = player_x;
+        leader->beam_pos.y = (float)BEAM_HOVER_Y;
+        /* Keep the cone on screen even when the fighter is against an edge. */
+        if (leader->beam_pos.x < BEAM_BOT_HW)          leader->beam_pos.x = BEAM_BOT_HW;
+        if (leader->beam_pos.x > GAME_W - BEAM_BOT_HW) leader->beam_pos.x = GAME_W - BEAM_BOT_HW;
+        leader->beam_t = 0;
+        leader->state  = ENEMY_BEAMING;
+        ++w->dives_boss;
+        return;
+    }
+
     int p = dive_path_alloc(w);
     if (p < 0) return;   /* pool full; the next attack will get a slot */
 
@@ -492,6 +607,14 @@ bool wave_hit(Wave *w, int index, int *score, int *popup)
         dive_path_release(w, e->dive_path);
         e->dive_path = -1;
     }
+
+    /* Shooting the boss that took your fighter is what gives it back. The
+       game notices by watching the holder across the call. */
+    if (e->has_captive) {
+        e->has_captive = false;
+        w->captive_holder = -1;
+    }
+
     e->state = ENEMY_DEAD;
     return true;
 }
@@ -564,6 +687,10 @@ void wave_recall(Wave *w)
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         Enemy *e = &w->enemies[i];
         if (e->state == ENEMY_DIVING) send_home(w, e);
+
+        /* A boss mid-capture shuts up shop and leaves too, but keeps anything
+           it has already taken - the captive belongs to it now. */
+        if (e->state == ENEMY_BEAMING) send_home(w, e);
     }
     wave_clear_shots(w);
 }
@@ -667,6 +794,26 @@ void wave_update(Wave *w, float player_x)
 
         case ENEMY_DEAD:
             break;
+
+        case ENEMY_BEAMING: {
+            ++e->beam_t;
+
+            if (e->beam_t <= BEAM_DESCEND) {
+                /* Slide down out of formation, easing in and out so it settles
+                   rather than stopping dead. */
+                float t = (float)e->beam_t / (float)BEAM_DESCEND;
+                float k = t * t * (3.0f - 2.0f * t);
+                e->pos.x = e->beam_from.x + (e->beam_pos.x - e->beam_from.x) * k;
+                e->pos.y = e->beam_from.y + (e->beam_pos.y - e->beam_from.y) * k;
+                e->heading = HEADING_S;
+            } else {
+                e->pos = e->beam_pos;
+                e->heading = HEADING_S;
+            }
+
+            if (e->beam_t >= BEAM_TOTAL) send_home(w, e);
+            break;
+        }
 
         case ENEMY_DIVING: {
             const Path *dp = &w->dive_paths[e->dive_path];
@@ -829,6 +976,41 @@ void wave_draw(Gfx *g, const Wave *w)
                    heading_from_vec(s->vel.x, s->vel.y), 1.0f);
     }
 
+    /* Beams first, so the boss and anything caught in one draw over them. */
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        const Enemy *e = &w->enemies[i];
+        if (e->state != ENEMY_BEAMING) continue;
+
+        float open = beam_open(e);
+        if (open <= 0.01f) continue;
+
+        /* Bands sliding down the cone. The movement is the whole effect: a
+           static gradient reads as a shape, a moving one reads as a beam. */
+        for (int b = 0; b < BEAM_BANDS; ++b) {
+            float phase = (float)((w->tick * 2 + b * 9) % (BEAM_BANDS * 9))
+                        / (float)(BEAM_BANDS * 9);
+            float t0 = phase;
+            float t1 = phase + 0.055f;
+            if (t1 > 1.0f) continue;
+
+            float d0 = t0 * BEAM_LEN * open;
+            float d1 = t1 * BEAM_LEN * open;
+            float w0 = beam_half_width(d0, open);
+            float w1 = beam_half_width(d1, open);
+
+            Vec2 quad[4] = {
+                { e->pos.x - w0, e->pos.y + d0 },
+                { e->pos.x + w0, e->pos.y + d0 },
+                { e->pos.x + w1, e->pos.y + d1 },
+                { e->pos.x - w1, e->pos.y + d1 },
+            };
+            SDL_Color c = (b & 1) ? (SDL_Color){ 120, 230, 255, 0 }
+                                  : (SDL_Color){  60, 120, 255, 0 };
+            c.a = (Uint8)(210.0f * open * (1.0f - t0 * 0.55f));
+            shape_draw_poly(g, quad, 4, c);
+        }
+    }
+
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         const Enemy *e = &w->enemies[i];
         if (e->state == ENEMY_WAITING || e->state == ENEMY_DEAD) continue;
@@ -862,5 +1044,12 @@ void wave_draw(Gfx *g, const Wave *w)
         }
 
         shape_draw_pal(g, e->shape, e->pos, heading, scale, pal, 1.0f);
+
+        /* The taken fighter rides under its captor, in enemy colours. */
+        if (e->has_captive) {
+            Vec2 cap = { e->pos.x, e->pos.y + 15.0f };
+            shape_draw_pal(g, SHP_FIGHTER, cap, e->heading + 180.0f, 1.0f,
+                           &SHAPE_PAL_FIGHTER_CAPTURED, 1.0f);
+        }
     }
 }

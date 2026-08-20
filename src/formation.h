@@ -34,6 +34,7 @@ typedef enum {
     ENEMY_TO_SLOT,    /* peeling off the path into its formation slot */
     ENEMY_FORMED,     /* parked, flapping */
     ENEMY_DIVING,     /* attacking, on a path built when the dive began */
+    ENEMY_BEAMING,    /* a boss hovering with its tractor beam open */
     ENEMY_DEAD        /* shot; the slot stays empty for the rest of the stage */
 } EnemyState;
 
@@ -67,6 +68,13 @@ typedef struct {
     float      dive_lateral;
     float      dive_formup;  /* 0..1, easing an escort off its slot on to station */
     Vec2       dive_from;    /* where it was parked, for that ease-in */
+
+    /* The capture routine: descend, open the beam, hold it, close, go home.
+       One timer drives the lot; which phase it is in falls out of the value. */
+    int        beam_t;
+    Vec2       beam_from;    /* the slot it left    */
+    Vec2       beam_pos;     /* where it hovers     */
+    bool       has_captive;  /* carrying a taken fighter */
 } Enemy;
 
 /* Authored paths. The left-hand ones are written out; each right-hand one is
@@ -105,6 +113,7 @@ typedef struct {
 
     int   tick;
     int   next_attack;       /* tick the next attack is due */
+    int   captive_holder;    /* enemy carrying a captured fighter, or -1 */
 
     /* The wave draws from its own generator rather than the global rand().
        Sharing one meant the attack mix depended on how many times the
@@ -147,6 +156,28 @@ void wave_print_stats(const Wave *w);
 
 /* Every enemy has been shot. */
 bool wave_cleared(const Wave *w);
+
+/* --------------------------------------------------------------- capture */
+
+/* True while `at` is inside an open tractor beam. `boss` receives the enemy
+   holding it open. The wave owns the geometry, so the game does not have to
+   know how a beam is shaped in order to be caught by one. */
+bool wave_beam_catch(const Wave *w, Vec2 at, int *boss);
+
+/* Hands a captured fighter to a boss, once the game has finished drawing it up
+   the beam. From here the boss carries it home and flies with it. */
+void wave_attach_captive(Wave *w, int boss);
+
+/* Which enemy is carrying a captive, or -1. Killing that enemy frees it, which
+   the game spots by watching this across a hit. */
+int wave_captive_holder(const Wave *w);
+
+/* Where a captive rides, so the game can fly the rescue from the right place. */
+Vec2 wave_captive_pos(const Wave *w);
+
+/* Where an enemy currently is. The capture animation has to fly the fighter up
+   to a boss that is still moving. */
+Vec2 wave_enemy_pos(const Wave *w, int index);
 
 /* Sends every diver home and clears the air. Called when the player dies: the
    arcade empties the screen rather than dropping a fresh ship into traffic,

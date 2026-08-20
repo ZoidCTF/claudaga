@@ -9,12 +9,17 @@
  * wave, and everything that happens when those things touch. It owns the
  * collision checks because it is the only thing that can see both sides. */
 
-/* One player missile in the air at a time. Missing therefore costs real time
-   - the shot has to clear the top of the screen before another can be fired -
-   which is where most of the difficulty in this game comes from. (The arcade
-   allowed two; one is a deliberate choice here.) */
-#define MAX_SHOTS   2
-#define START_LIVES 3
+/* Shots in the air at once. Missing costs real time - a shot has to clear the
+   top of the screen before its slot frees up - which is where most of the
+   difficulty comes from. A dual fighter fires from both hulls and is allowed
+   twice as many, which is most of what makes rescuing one worth doing. */
+#define SHOTS_SINGLE 2
+#define SHOTS_DUAL   4
+#define MAX_SHOTS    SHOTS_DUAL
+#define START_LIVES  3
+
+/* How far each hull of a dual fighter sits from the pair's centre. */
+#define DUAL_OFFSET 8.0f
 
 typedef struct {
     Vec2 pos;
@@ -24,8 +29,17 @@ typedef struct {
 typedef struct {
     float x;
     bool  alive;
+    bool  dual;        /* a rescued fighter is flying alongside */
     int   lives;
     int   respawn;     /* ticks left before it comes back */
+
+    /* Being drawn up a tractor beam. Not the same as dead: there is no wreck,
+       the wave is not recalled, and what comes back is a fighter in enemy
+       colours riding under the boss that took it. */
+    bool  captured;
+    Vec2  cap_pos;
+    float cap_spin;
+    int   cap_boss;
 } Player;
 
 typedef struct {
@@ -41,6 +55,10 @@ typedef struct {
     int    tick;
     int    stage_clear;   /* ticks left on the pause between stages */
     int    game_over;     /* ticks left on the game over message */
+
+    /* A fighter freed by shooting its captor, on its way down to dock. */
+    bool   rescue_active;
+    Vec2   rescue_pos;
 
     /* Debug aid: stops the fighter dying, so a long --at run reaches the tick
        it was asked for instead of restarting halfway. */
