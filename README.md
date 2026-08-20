@@ -84,7 +84,8 @@ what the stage's difficulty works out to and how the wave behaved under it,
 `--stage N` starts on a later stage so that difficulty can be measured without
 playing up to it, `--mute` opens no audio device, `--padtest` runs the
 controller self test and exits, `--options` opens on the options page so it can
-be screenshot, and `--trace` logs each stage handover.
+be screenshot, `--audiotest [DIR]` reports the mixer's capacity and measures
+every sound, and `--trace` logs each stage handover.
 `--shot` and `--stats` mute themselves.
 
 `--trace` reports each stage handover: what was still in the air when the stage
@@ -691,9 +692,37 @@ tick traced run produces byte-identical events with sound on and with `--mute`.
 
 Several effects have two or three near-identical takes and one is chosen at
 random per play, which is what stops four enemies dying inside a second from
-turning into an obvious machine-gun repeat of one sample. When every channel is
-busy an effect is dropped rather than stealing one — the fullest moment in the
-mix is exactly where a cut-off sample sounds worst.
+turning into an obvious machine-gun repeat of one sample. **Sixteen effects mix
+at once**, with music on its own stream on top; past sixteen an effect is
+dropped rather than stealing a channel, since the fullest moment in the mix is
+exactly where a cut-off sample sounds worst. That is measured, not assumed —
+`--audiotest` starts twenty and counts what sounds.
+
+### Balancing a mix you cannot hear
+
+Sample packs do not arrive at matched loudness, and picking between them by ear
+is not available here. So `--audiotest` measures each sound instead: length,
+peak, RMS, and the share of its loudness below 320 Hz — which is what "boomy"
+actually means, and separates a chest-thump from a chiptune zap far better than
+peak level does.
+
+That is how the explosions got replaced. The originals were
+`explosionCrunch_000/002/003`, and the numbers said exactly what was wrong with
+them: **0.78 to 1.55 seconds long, with 63 to 94 percent of their energy under
+320 Hz** — a long bass thump, forty times a stage, against a player shot of
+0.24s. The `phaserDown` family measures 0.31 to 0.50 seconds at 47 to 62
+percent, and peaks a third lower.
+
+The same numbers turned up a second problem nobody had reported: the three
+jingles peaked at 0.13 to 0.45 against effects peaking at 0.90 — up to
+seventeen decibels down, and simply lost under the shooting. `Mix_VolumeChunk`
+can only attenuate, so the only way up was in the files, which are normalised
+to a peak of 0.80.
+
+Each effect now carries its own level in the table, applied at load. The
+report prints it beside the sample figures on purpose: the volume does not
+touch the audio data, so peak and RMS describe the file and the level sits on
+top of them, and reading the two apart gives the wrong picture of the mix.
 
 ### Where it came from, and what is wrong with it
 
@@ -709,7 +738,7 @@ the cut.
 None of it is Galaga's audio and none of it is a transcription; that music and
 those sounds are Namco's. The chiptune was picked to sit in the same idiom.
 
-Worth saying plainly, though: **the effects are the weakest part of the
+Worth saying plainly, though: **the effects are still the weakest part of the
 project.** They are modern, sample-based, slightly reverberant sci-fi sounds,
 and Galaga's were pure square and noise waveforms off a 1981 Namco WSG — short,
 dry and harsh. Sitting next to artwork that was deliberately rebuilt to match

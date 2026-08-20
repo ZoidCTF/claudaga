@@ -14,13 +14,22 @@ Sound effects
 -------------
   shot_*.ogg      laserSmall_000/002/004
   efire_*.ogg     laserRetro_000/002/004
-  boom_*.ogg      explosionCrunch_000/002/003
   bosshit_*.ogg   impactMetal_001/003
   die_*.ogg       lowFrequency_explosion_000/001
   beam_0.ogg      forceField_002
 
     from "Sci-fi Sounds" (v1.0) by Kenney - https://kenney.nl/assets/sci-fi-sounds
     CC0. Unmodified; renamed only.
+
+  boom_*.ogg      phaserDown1/2/3
+
+    from "Digital Audio" by Kenney - https://kenney.nl/assets/digital-audio
+    CC0. Unmodified; renamed only.
+
+    These replaced explosionCrunch_000/002/003 from the Sci-fi pack, which ran
+    0.78 to 1.55 seconds with 63 to 94 percent of their energy below 320 Hz -
+    a long, bass-heavy thump, forty times a stage. The replacements are 0.31 to
+    0.50 seconds at 47 to 62 percent, and peak a third lower.
 
 Music and jingles
 -----------------
@@ -38,3 +47,9 @@ Music and jingles
                   additionally cut to 15 seconds - roughly the length of a
                   challenging stage - at the quietest point in a 13.5-17.0s
                   window, with a 0.25s fade over the cut.
+
+                  The three jingles are additionally normalised to a peak of
+                  0.80. They arrived peaking at 0.13 to 0.45 against effects
+                  peaking at 0.90 - up to seventeen decibels down, and lost
+                  under the shooting. SDL_mixer can only attenuate a sound, so
+                  the only way up was in the file.

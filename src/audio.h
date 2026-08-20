@@ -70,4 +70,13 @@ void audio_music(MusicId id);
    silence at the end of a bonus round is more noticeable than the music. */
 void audio_music_stop(void);
 
+/* Reports what the mixer can actually do at once, and measures every sound it
+   loaded: length, peak, loudness, and how much of the energy sits down at the
+   bottom. Balancing a mix by ear is not available here, so it is done by
+   number instead. With a directory it measures that instead of the game's own
+   sounds, which is how a candidate is judged before it is adopted.
+
+   Returns non-zero if something could not be measured. */
+int audio_report(const char *dir);
+
 #endif /* CLAUDAGA_AUDIO_H */

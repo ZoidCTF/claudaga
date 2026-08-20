@@ -1,5 +1,6 @@
 #include "audio.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,7 +15,7 @@
 #define AUDIO_BUFFER   512
 #define AUDIO_CHANNELS 16
 
-#define SFX_VOLUME   (MIX_MAX_VOLUME * 3 / 5)
+#define SFX_VOLUME   MIX_MAX_VOLUME   /* per-effect levels do the trimming */
 #define MUSIC_VOLUME (MIX_MAX_VOLUME * 2 / 5)
 #define FADE_MS      400
 
@@ -22,22 +23,34 @@
 
 typedef struct {
     const char *file[MAX_VARIANTS];   /* NULL terminates the list */
+    int         vol;                  /* 0..MIX_MAX_VOLUME, per effect */
 } SfxDef;
 
 /* The effects, and which files each draws from. Written out rather than
    generated from a stem and a count because the extensions differ - the
    Kenney effects are Vorbis and the jingles are WAV - and because a table you
    can read is worth more here than one you can loop over. */
+/* Each effect carries its own level, because the samples do not arrive at
+   matched loudness and nothing else can fix that: several of these fire at
+   once - a wave clearing sets off a handful of explosions inside a second -
+   and the one that is 6dB hot is the one you hear. The numbers were set
+   against the figures --audiotest prints rather than guessed, and the loudest
+   raw samples are the ones pulled down.
+
+   Note this can only attenuate. Anything too quiet has to be lifted in the
+   file itself, which is what happened to the jingles: they arrived peaking at
+   0.13 against effects peaking at 0.9, seventeen decibels down and inaudible
+   under the shooting. */
 static const SfxDef SFX_FILES[SFX_COUNT] = {
-    [SFX_SHOT]       = { { "shot_0.ogg",    "shot_1.ogg",    "shot_2.ogg" } },
-    [SFX_ENEMY_FIRE] = { { "efire_0.ogg",   "efire_1.ogg",   "efire_2.ogg" } },
-    [SFX_ENEMY_DIE]  = { { "boom_0.ogg",    "boom_1.ogg",    "boom_2.ogg" } },
-    [SFX_BOSS_HIT]   = { { "bosshit_0.ogg", "bosshit_1.ogg", NULL } },
-    [SFX_PLAYER_DIE] = { { "die_0.ogg",     "die_1.ogg",     NULL } },
-    [SFX_BEAM]       = { { "beam_0.ogg",    NULL,            NULL } },
-    [SFX_STAGE]      = { { "jingle_stage.wav",   NULL, NULL } },
-    [SFX_EXTRA]      = { { "jingle_extra.wav",   NULL, NULL } },
-    [SFX_PERFECT]    = { { "jingle_perfect.wav", NULL, NULL } },
+    [SFX_SHOT]       = { { "shot_0.ogg",    "shot_1.ogg",    "shot_2.ogg" },  96 },
+    [SFX_ENEMY_FIRE] = { { "efire_0.ogg",   "efire_1.ogg",   "efire_2.ogg" }, 80 },
+    [SFX_ENEMY_DIE]  = { { "boom_0.ogg",    "boom_1.ogg",    "boom_2.ogg" }, 112 },
+    [SFX_BOSS_HIT]   = { { "bosshit_0.ogg", "bosshit_1.ogg", NULL },         112 },
+    [SFX_PLAYER_DIE] = { { "die_0.ogg",     "die_1.ogg",     NULL },         128 },
+    [SFX_BEAM]       = { { "beam_0.ogg",    NULL,            NULL },          96 },
+    [SFX_STAGE]      = { { "jingle_stage.wav",   NULL, NULL },               110 },
+    [SFX_EXTRA]      = { { "jingle_extra.wav",   NULL, NULL },               110 },
+    [SFX_PERFECT]    = { { "jingle_perfect.wav", NULL, NULL },               110 },
 };
 
 static const char *MUSIC_FILES[MUSIC_COUNT] = {
@@ -115,6 +128,9 @@ void audio_init(bool enabled)
                 SDL_Log("audio: %s did not load (%s)", file, Mix_GetError());
                 continue;
             }
+            int vol = SFX_FILES[id].vol;
+            Mix_VolumeChunk(c, vol > 0 ? vol : MIX_MAX_VOLUME);
+
             s_sfx[id][s_variants[id]++] = c;
             ++s_loaded;
         }
@@ -198,4 +214,153 @@ void audio_music_stop(void)
     if (!s_on) return;
     if (Mix_PlayingMusic()) Mix_FadeOutMusic(FADE_MS);
     s_playing = -1;
+}
+
+/* --------------------------------------------------------------- measuring */
+
+/* A one-pole lowpass, used to ask how much of a sound is bass. The corner is
+   deliberately low: "boomy" means energy under a few hundred Hz, and the ratio
+   of lowpassed loudness to total loudness separates a chest-thump from a
+   chiptune zap far better than peak level does. */
+#define BASS_HZ 320.0f
+
+typedef struct {
+    float secs;
+    float peak;    /* 0..1 */
+    float rms;     /* 0..1 */
+    float bass;    /* 0..1, share of loudness below BASS_HZ */
+} SoundStats;
+
+static bool measure(Mix_Chunk *c, SoundStats *st)
+{
+    int freq = 0, channels = 0;
+    Uint16 fmt = 0;
+    if (!Mix_QuerySpec(&freq, &fmt, &channels)) return false;
+    if (fmt != AUDIO_S16SYS || channels < 1) return false;
+
+    const Sint16 *p = (const Sint16 *)c->abuf;
+    int frames = (int)(c->alen / (sizeof(Sint16) * (size_t)channels));
+    if (frames <= 0) return false;
+
+    /* One pole: y += k * (x - y), with k set from the corner frequency. */
+    float k = 1.0f - expf(-2.0f * (float)M_PI * BASS_HZ / (float)freq);
+    float lp = 0.0f;
+    double sum = 0.0, sum_lp = 0.0;
+    float peak = 0.0f;
+
+    for (int i = 0; i < frames; ++i) {
+        /* Mono sum, so a sound panned either way measures the same. */
+        float v = 0.0f;
+        for (int ch = 0; ch < channels; ++ch) v += p[i * channels + ch];
+        v /= (float)channels * 32768.0f;
+
+        float a = fabsf(v);
+        if (a > peak) peak = a;
+
+        lp += k * (v - lp);
+        sum    += (double)v * v;
+        sum_lp += (double)lp * lp;
+    }
+
+    st->secs = (float)frames / (float)freq;
+    st->peak = peak;
+    st->rms  = (float)sqrt(sum / frames);
+    st->bass = st->rms > 0.0f ? (float)(sqrt(sum_lp / frames) / st->rms) : 0.0f;
+    return true;
+}
+
+/* `vol` is the level the effect is played at, or -1 for a candidate that has
+   not been adopted and so has none. It is worth printing beside the sample
+   figures because Mix_VolumeChunk does not touch the audio itself - peak and
+   rms below describe the file, and the level is applied on top of them, so
+   reading the two apart would give the wrong picture of the mix. */
+static void report_one(const char *label, Mix_Chunk *c, int vol)
+{
+    SoundStats st;
+    if (!c || !measure(c, &st)) {
+        printf("  %-22s could not be measured\n", label);
+        return;
+    }
+    if (vol >= 0) {
+        printf("  %-22s %5.2fs  peak %.2f  rms %.3f  bass %.2f  vol %3d\n",
+               label, st.secs, st.peak, st.rms, st.bass, vol);
+    } else {
+        printf("  %-22s %5.2fs  peak %.2f  rms %.3f  bass %.2f\n",
+               label, st.secs, st.peak, st.rms, st.bass);
+    }
+}
+
+/* How many effects the mixer will carry at once, measured rather than assumed:
+   start as many as there are channels and count what is still sounding. */
+static void report_overlap(void)
+{
+    Mix_Chunk *c = NULL;
+    for (int id = 0; id < SFX_COUNT && !c; ++id) {
+        if (s_variants[id] > 0) c = s_sfx[id][0];
+    }
+    if (!c) { printf("  no sound to test overlap with\n"); return; }
+
+    Mix_HaltChannel(-1);
+    int started = 0;
+    for (int i = 0; i < AUDIO_CHANNELS + 4; ++i) {
+        if (Mix_PlayChannel(-1, c, 0) >= 0) ++started;
+    }
+    int sounding = Mix_Playing(-1);
+    printf("  channels allocated        %d\n", AUDIO_CHANNELS);
+    printf("  starts accepted           %d of %d attempted\n",
+           started, AUDIO_CHANNELS + 4);
+    printf("  sounding at once          %d\n", sounding);
+    printf("  music is separate         %s\n",
+           Mix_PlayingMusic() ? "yes (playing)" : "yes (its own stream)");
+    Mix_HaltChannel(-1);
+}
+
+int audio_report(const char *dir)
+{
+    if (!s_on) { printf("audio is not open\n"); return 1; }
+
+    printf("overlap\n");
+    report_overlap();
+
+    printf("\nsounds\n");
+
+    if (!dir) {
+        for (int id = 0; id < SFX_COUNT; ++id) {
+            for (int v = 0; v < s_variants[id]; ++v) {
+                report_one(SFX_FILES[id].file[v], s_sfx[id][v],
+                           SFX_FILES[id].vol > 0 ? SFX_FILES[id].vol
+                                                 : MIX_MAX_VOLUME);
+            }
+        }
+        return 0;
+    }
+
+    /* A directory of candidates. Loaded and freed one at a time rather than
+       held, since a pack can be a hundred files and none of them are wanted
+       yet. */
+    /* SDL 2 has no directory listing, so the caller leaves a list.txt beside
+       the candidates: one name per line. Cheaper than pulling in a platform
+       header for a tool that runs a handful of times. */
+    char listpath[1200];
+    SDL_snprintf(listpath, sizeof listpath, "%s/list.txt", dir);
+    FILE *f = fopen(listpath, "r");
+    if (!f) {
+        printf("  no %s - write one name per line\n", listpath);
+        return 1;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        size_t n = strlen(line);
+        while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = 0;
+        if (n == 0) continue;
+
+        char full[1400];
+        SDL_snprintf(full, sizeof full, "%s/%s", dir, line);
+        Mix_Chunk *c = Mix_LoadWAV(full);
+        report_one(line, c, -1);
+        if (c) Mix_FreeChunk(c);
+    }
+    fclose(f);
+    return 0;
 }

@@ -272,6 +272,7 @@ static void usage(void)
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "                [--stage N] [--mute] [--padtest] [--options]\n"
+            "                [--audiotest [DIR]]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -347,6 +348,8 @@ int main(int argc, char **argv)
     bool        mute      = false;
     bool        padtest   = false;
     bool        show_options = false;
+    const char *audiodir  = NULL;
+    bool        audioreport = false;
     bool        autofire  = false;
     bool        trace     = false;
 
@@ -367,6 +370,10 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--trace"))                    trace = true;
         else if (!strcmp(argv[i], "--mute"))                     mute = true;
         else if (!strcmp(argv[i], "--padtest"))                  padtest = true;
+        else if (!strcmp(argv[i], "--audiotest")) {
+            audioreport = true;
+            if (i + 1 < argc && argv[i + 1][0] != 0x2D) audiodir = argv[++i];
+        }
         else if (!strcmp(argv[i], "--options")) { show_options = true; view_set = true; }
         else { usage(); return 1; }
     }
@@ -403,7 +410,14 @@ int main(int argc, char **argv)
        is pointless, and a --stats run would fire thousands of effects at a
        device nobody is listening to - which is slow, and on some drivers is
        slow enough to matter to a measurement. */
-    audio_init(!mute && !shot_path && stats <= 0);
+    audio_init(!mute && (audioreport || (!shot_path && stats <= 0)));
+
+    if (audioreport) {
+        int bad = audio_report(audiodir);
+        audio_shutdown();
+        gfx_shutdown(&g);
+        return bad;
+    }
 
     /* Controllers are opened even for a headless run. The warm-up drives the
        game from a struct it fills in itself and never reads a pad, but a run
