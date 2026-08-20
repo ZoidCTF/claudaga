@@ -21,6 +21,7 @@
 #include "shape.h"
 #include "game.h"
 #include "audio.h"
+#include "input.h"
 
 /* A headless fast-forward starts a fresh game rather than stopping on the
    menu. Flip this to exercise the interactive path through --at. */
@@ -114,10 +115,25 @@ static void options_draw(Gfx *g)
     font_draw_scaled(g, (GAME_W - font_width_scaled(h, 2.0f)) / 2, 50.0f,
                      YELLOW, h, 2.0f);
 
-    const char *a = "NOTHING TO SET YET";
-    const char *b = "SOUND AND CONTROLS WILL LIVE HERE";
-    font_draw(g, (GAME_W - font_width(a)) / 2, 120, DIM, a);
-    font_draw(g, (GAME_W - font_width(b)) / 2, 134, DIM, b);
+    /* Nothing is configurable yet, but what is plugged in is worth saying:
+       "does it see my controller" is the first question anyone asks, and a
+       menu that cannot answer it sends them to the game to find out. */
+    char buf[48];
+    int pads = input_pads();
+    if (pads > 0) {
+        snprintf(buf, sizeof buf, "CONTROLLER  %d CONNECTED", pads);
+    } else {
+        snprintf(buf, sizeof buf, "CONTROLLER  NONE");
+    }
+    font_draw(g, (GAME_W - font_width(buf)) / 2, 108, pads > 0 ? CYAN : DIM, buf);
+
+    const char *k1 = "PAD   STICK OR DPAD TO FLY   A TO FIRE";
+    const char *k2 = "KEYS  ARROWS TO FLY   SPACE TO FIRE";
+    font_draw(g, (GAME_W - font_width(k1)) / 2, 128, DIM, k1);
+    font_draw(g, (GAME_W - font_width(k2)) / 2, 140, DIM, k2);
+
+    const char *a = "VOLUME SETTINGS WILL LIVE HERE";
+    font_draw(g, (GAME_W - font_width(a)) / 2, 160, DIM, a);
 
     const char *back = "ESC BACK";
     font_draw(g, (GAME_W - font_width(back)) / 2, GAME_H - 40, CYAN, back);
@@ -218,10 +234,10 @@ static void pose_draw(Gfx *g, int subject)
    fast-forward cannot drift apart: `to_title` hands control back to the menu,
    which is what a person should see, while a headless run has nobody to show a
    menu to and simply starts again. */
-static void play_tick(Game *game, const Uint8 *keys, bool to_title,
+static void play_tick(Game *game, const Input *in, bool to_title,
                       View *view, int *menu_sel)
 {
-    game_update(game, keys);
+    game_update(game, in);
     if (!game->finished) return;
 
     if (to_title) {
@@ -240,19 +256,73 @@ static void usage(void)
             "                [--subject N] [--scale N]\n"
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
-            "                [--stage N] [--mute]\n"
+            "                [--stage N] [--mute] [--padtest]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
+}
+
+/* The menu, as actions rather than as key handlers.
+ *
+ * Both the keyboard and a controller drive these, and they have to stay the
+ * same menu: written twice, one of them acquires a case the other lacks the
+ * first time anything is added. It is the same reasoning that put the warm-up
+ * and the interactive loop through one play_tick. */
+typedef struct {
+    View view;
+    int  menu_sel;
+    bool options;
+    bool running;
+    int  subject;
+} Ui;
+
+static void ui_up(Ui *u)
+{
+    if (u->view == VIEW_TITLE && !u->options) {
+        u->menu_sel = (u->menu_sel + MENU_COUNT - 1) % MENU_COUNT;
+    }
+}
+
+static void ui_down(Ui *u)
+{
+    if (u->view == VIEW_TITLE && !u->options) {
+        u->menu_sel = (u->menu_sel + 1) % MENU_COUNT;
+    }
+}
+
+static void ui_confirm(Ui *u, Game *game)
+{
+    if (u->view != VIEW_TITLE || u->options) return;
+
+    if (u->menu_sel == MENU_START) {
+        game_restart(game);
+        u->view = VIEW_PLAY;
+        audio_music_stop();
+    } else if (u->menu_sel == MENU_OPTIONS) {
+        u->options = true;
+    } else {
+        u->running = false;
+    }
+}
+
+/* Always towards the menu, never out of the process: out of the options page
+   first, then out of whatever view is up. On the title itself there is nowhere
+   further back to go, and QUIT is the way out. */
+static void ui_back(Ui *u)
+{
+    if (u->options)                 u->options = false;
+    else if (u->view != VIEW_TITLE) u->view = VIEW_TITLE;
+}
+
+static void ui_next_view(Ui *u)
+{
+    if (!u->options) u->view = (View)((u->view + 1) % VIEW_COUNT);
 }
 
 int main(int argc, char **argv)
 {
     const char *shot_path = NULL;
-    View        view      = VIEW_TITLE;
+    Ui          ui        = { VIEW_TITLE, MENU_START, false, true, 0 };
     bool        view_set  = false;
-    bool        options   = false;
-    int         menu_sel  = MENU_START;
-    int         subject   = 0;
     int         scale     = 3;
     int         warmup    = 0;
     int         stats     = 0;
@@ -260,16 +330,17 @@ int main(int argc, char **argv)
     bool        observe   = false;
     int         first_stage = 1;
     bool        mute      = false;
+    bool        padtest   = false;
     bool        autofire  = false;
     bool        trace     = false;
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--shot") && i + 1 < argc)          shot_path = argv[++i];
-        else if (!strcmp(argv[i], "--scene"))   { view = VIEW_PLAY;    view_set = true; }
-        else if (!strcmp(argv[i], "--pose"))    { view = VIEW_POSE;    view_set = true; }
-        else if (!strcmp(argv[i], "--shapes"))  { view = VIEW_SHAPES;  view_set = true; }
-        else if (!strcmp(argv[i], "--title"))   { view = VIEW_TITLE;   view_set = true; }
-        else if (!strcmp(argv[i], "--subject") && i + 1 < argc)  subject = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--scene"))   { ui.view = VIEW_PLAY;    view_set = true; }
+        else if (!strcmp(argv[i], "--pose"))    { ui.view = VIEW_POSE;    view_set = true; }
+        else if (!strcmp(argv[i], "--shapes"))  { ui.view = VIEW_SHAPES;  view_set = true; }
+        else if (!strcmp(argv[i], "--title"))   { ui.view = VIEW_TITLE;   view_set = true; }
+        else if (!strcmp(argv[i], "--subject") && i + 1 < argc)  ui.subject = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--scale")   && i + 1 < argc)  scale = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--at")      && i + 1 < argc)  warmup = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--stats")   && i + 1 < argc)  stats = atoi(argv[++i]);
@@ -279,6 +350,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--autofire"))                 autofire = true;
         else if (!strcmp(argv[i], "--trace"))                    trace = true;
         else if (!strcmp(argv[i], "--mute"))                     mute = true;
+        else if (!strcmp(argv[i], "--padtest"))                  padtest = true;
         else { usage(); return 1; }
     }
     if (scale < 1) scale = 1;
@@ -286,8 +358,20 @@ int main(int argc, char **argv)
     /* Fast-forwarding or measuring means the game, not the title: there is
        nothing to advance on a menu, and every capture would otherwise come
        back as a picture of the title screen. */
-    if (!view_set && (warmup > 0 || stats > 0)) view = VIEW_PLAY;
-    if (subject < 0 || subject >= ARRAY_COUNT(POSE_SUBJECTS)) subject = 0;
+    if (!view_set && (warmup > 0 || stats > 0)) ui.view = VIEW_PLAY;
+    if (ui.subject < 0 || ui.subject >= ARRAY_COUNT(POSE_SUBJECTS)) ui.subject = 0;
+
+    /* Before the window: the self test wants SDL up but has nothing to draw,
+       and opening a window it would immediately close is noise. */
+    if (padtest) {
+        if (SDL_Init(SDL_INIT_EVENTS) < 0) {
+            fprintf(stderr, "SDL would not start: %s' + BS + 'n", SDL_GetError());
+            return 2;
+        }
+        int bad = input_selftest();
+        SDL_Quit();
+        return bad == 0 ? 0 : 1;
+    }
 
     Gfx g;
     if (!gfx_init(&g, "Claudaga", scale)) return 1;
@@ -297,6 +381,11 @@ int main(int argc, char **argv)
        device nobody is listening to - which is slow, and on some drivers is
        slow enough to matter to a measurement. */
     audio_init(!mute && !shot_path && stats <= 0);
+
+    /* Controllers are opened even for a headless run. The warm-up drives the
+       game from a struct it fills in itself and never reads a pad, but a run
+       that fast-forwards and then hands over wants one working when it does. */
+    input_open();
 
     static Game game;   /* several hundred KB of baked paths; not stack-sized */
     game_init(&game);
@@ -319,6 +408,7 @@ int main(int argc, char **argv)
     if (stats > 0) {
         for (int i = 0; i < stats; ++i) wave_update(&game.wave, game.player.x);
         wave_print_stats(&game.wave);
+        input_close();
         audio_shutdown();
         gfx_shutdown(&g);
         return 0;
@@ -327,18 +417,18 @@ int main(int argc, char **argv)
     /* --at runs the simulation forward with no rendering, so a screenshot can
        be taken at a chosen moment rather than only at tick 0. Pair it with
        --observe to stop the fighter dying and restarting the run. */
-    static Uint8 warm_keys[SDL_NUM_SCANCODES] = { 0 };
-    if (autofire) warm_keys[SDL_SCANCODE_SPACE] = 1;
+    Input warm = { false, false, false };
+    warm.fire = autofire;
     for (int i = 0; i < warmup; ++i) {
         /* Autofire also sweeps the fighter side to side. Parked in the middle
            it only ever shoots up one column, so a wave never clears and the
            later stages cannot be reached to look at. */
         if (autofire) {
             int leftward = (i / 90) % 2;
-            warm_keys[SDL_SCANCODE_LEFT]  = (Uint8)(leftward ? 1 : 0);
-            warm_keys[SDL_SCANCODE_RIGHT] = (Uint8)(leftward ? 0 : 1);
+            warm.left  = leftward != 0;
+            warm.right = leftward == 0;
         }
-        play_tick(&game, warm_keys, WARMUP_TO_TITLE, &view, &menu_sel);
+        play_tick(&game, &warm, WARMUP_TO_TITLE, &ui.view, &ui.menu_sel);
     }
 
     /* Fixed 60Hz steps with an accumulator, so the simulation does not change
@@ -349,75 +439,47 @@ int main(int argc, char **argv)
     double accum = 0.0;
 
     int  tick      = 0;
-    bool running   = true;
-    View shown     = view;
+    View shown     = ui.view;
 
-    while (running) {
+    while (ui.running) {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
+            input_event(&ev);
+
             if (ev.type == SDL_QUIT) {
-                running = false;
+                ui.running = false;
             } else if (ev.type == SDL_KEYDOWN && !ev.key.repeat) {
                 switch (ev.key.keysym.sym) {
-                case SDLK_ESCAPE:
-                    /* Escape always heads towards the menu and never kills the
-                       process: out of options first, then out of whatever view
-                       is up. On the title itself there is nowhere further back
-                       to go, and QUIT is the way out. */
-                    if (options)                 options = false;
-                    else if (view != VIEW_TITLE) view = VIEW_TITLE;
-                    break;
-                case SDLK_TAB:
-                    if (!options) view = (View)((view + 1) % VIEW_COUNT);
-                    break;
-                case SDLK_UP:
-                    if (view == VIEW_TITLE && !options) {
-                        menu_sel = (menu_sel + MENU_COUNT - 1) % MENU_COUNT;
-                    }
-                    break;
-                case SDLK_DOWN:
-                    if (view == VIEW_TITLE && !options) {
-                        menu_sel = (menu_sel + 1) % MENU_COUNT;
-                    }
-                    break;
+                case SDLK_ESCAPE:      ui_back(&ui);            break;
+                case SDLK_TAB:         ui_next_view(&ui);       break;
+                case SDLK_UP:          ui_up(&ui);              break;
+                case SDLK_DOWN:        ui_down(&ui);            break;
                 case SDLK_RETURN:
-                case SDLK_KP_ENTER:
-                    if (view == VIEW_TITLE && !options) {
-                        if (menu_sel == MENU_START) {
-                            game_restart(&game);
-                            view = VIEW_PLAY;
-                            audio_music_stop();
-                        } else if (menu_sel == MENU_OPTIONS) {
-                            options = true;
-                        } else {
-                            running = false;
-                        }
-                    }
-                    break;
+                case SDLK_KP_ENTER:    ui_confirm(&ui, &game);  break;
                 case SDLK_r:
-                    if (view == VIEW_PLAY) game_restart(&game);
+                    if (ui.view == VIEW_PLAY) game_restart(&game);
                     break;
                 case SDLK_p:
-                    if (view == VIEW_PLAY) {
+                    if (ui.view == VIEW_PLAY) {
                         game.wave.show_paths = !game.wave.show_paths;
                     }
                     break;
                 case SDLK_a:
-                    if (view == VIEW_PLAY) {
+                    if (ui.view == VIEW_PLAY) {
                         game.wave.attacks_enabled = !game.wave.attacks_enabled;
                     }
                     break;
                 case SDLK_LEFT:
                 case SDLK_PAGEUP:
-                    if (view == VIEW_POSE) {
-                        subject = (subject + ARRAY_COUNT(POSE_SUBJECTS) - 1)
+                    if (ui.view == VIEW_POSE) {
+                        ui.subject = (ui.subject + ARRAY_COUNT(POSE_SUBJECTS) - 1)
                                 % ARRAY_COUNT(POSE_SUBJECTS);
                     }
                     break;
                 case SDLK_RIGHT:
                 case SDLK_PAGEDOWN:
-                    if (view == VIEW_POSE) {
-                        subject = (subject + 1) % ARRAY_COUNT(POSE_SUBJECTS);
+                    if (ui.view == VIEW_POSE) {
+                        ui.subject = (ui.subject + 1) % ARRAY_COUNT(POSE_SUBJECTS);
                     }
                     break;
                 default: break;
@@ -425,12 +487,27 @@ int main(int argc, char **argv)
             }
         }
 
+        /* A controller's menu presses arrive here rather than in the switch
+           above, because some of them are stick crossings rather than button
+           events and are only noticed when the sticks are sampled. They go
+           through the very same handlers the keys do. */
+        for (UiAction a = input_take_ui(); a != UI_NONE; a = input_take_ui()) {
+            switch (a) {
+            case UI_UP:        ui_up(&ui);             break;
+            case UI_DOWN:      ui_down(&ui);           break;
+            case UI_CONFIRM:   ui_confirm(&ui, &game); break;
+            case UI_BACK:      ui_back(&ui);           break;
+            case UI_NEXT_VIEW: ui_next_view(&ui);      break;
+            case UI_NONE:                              break;
+            }
+        }
+
         /* Leaving any view for the game silences whatever was playing. Doing
            it on the transition rather than at the menu covers Tab as well,
            which can drop straight into play from a shape tool. */
-        if (view != shown) {
-            if (view == VIEW_PLAY) audio_music_stop();
-            shown = view;
+        if (ui.view != shown) {
+            if (ui.view == VIEW_PLAY) audio_music_stop();
+            shown = ui.view;
         }
 
         Uint64 now = SDL_GetPerformanceCounter();
@@ -438,12 +515,17 @@ int main(int argc, char **argv)
         prev = now;
         if (accum > 0.25) accum = 0.25;   /* do not spiral after a stall */
 
-        const Uint8 *keys = SDL_GetKeyboardState(NULL);
+        /* Sampled once a frame, not once a step: two simulation steps inside
+           one frame see the same input, which is what the accumulator is for.
+           This also feeds the stick crossings into the queue drained above. */
+        Input in;
+        input_sample(&in);
+
         while (accum >= STEP) {
             accum -= STEP;
             ++tick;
-            if (view == VIEW_PLAY) {
-                play_tick(&game, keys, true, &view, &menu_sel);
+            if (ui.view == VIEW_PLAY) {
+                play_tick(&game, &in, true, &ui.view, &ui.menu_sel);
             } else {
                 game_background_update();
 
@@ -456,20 +538,21 @@ int main(int argc, char **argv)
         }
 
         gfx_begin_frame(&g);
-        if (options)                  options_draw(&g);
-        else if (view == VIEW_TITLE)  title_draw(&g, menu_sel, tick);
-        else if (view == VIEW_PLAY)   game_draw(&g, &game);
-        else if (view == VIEW_POSE)   pose_draw(&g, subject);
+        if (ui.options)                  options_draw(&g);
+        else if (ui.view == VIEW_TITLE)  title_draw(&g, ui.menu_sel, tick);
+        else if (ui.view == VIEW_PLAY)   game_draw(&g, &game);
+        else if (ui.view == VIEW_POSE)   pose_draw(&g, ui.subject);
         else                          shapes_draw(&g, tick);
 
         if (shot_path) {
             gfx_screenshot(&g, shot_path);
             printf("wrote %s\n", shot_path);
-            running = false;
+            ui.running = false;
         }
         gfx_end_frame(&g);
     }
 
+    input_close();
     audio_shutdown();
     gfx_shutdown(&g);
     return 0;

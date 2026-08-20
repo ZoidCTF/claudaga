@@ -502,10 +502,10 @@ static void clear_shots(Game *g)
 /* Movement, on its own, because the fighter keeps flying during the pause
    between stages. The arcade never takes the controls away there, and having
    it lock up mid-screen while the message is on reads as the game hanging. */
-static void steer_player(Game *g, const Uint8 *keys)
+static void steer_player(Game *g, const Input *in)
 {
-    if (keys[SDL_SCANCODE_LEFT])  g->player.x -= PLAYER_SPEED;
-    if (keys[SDL_SCANCODE_RIGHT]) g->player.x += PLAYER_SPEED;
+    if (in->left)  g->player.x -= PLAYER_SPEED;
+    if (in->right) g->player.x += PLAYER_SPEED;
 
     /* A dual fighter is twice as wide, so it stops sooner at the edges. */
     float half = CELL / 2.0f + (g->player.dual ? DUAL_OFFSET : 0.0f);
@@ -545,7 +545,7 @@ static void fire(Game *g)
     audio_play(SFX_SHOT);
 }
 
-void game_update(Game *g, const Uint8 *keys)
+void game_update(Game *g, const Input *in)
 {
     ++g->tick;
     stars_update();
@@ -583,7 +583,7 @@ void game_update(Game *g, const Uint8 *keys)
        what a player is doing at that moment - would skip the screen before it
        had drawn a single frame. */
     if (g->results > 0) {
-        bool firing = keys && keys[SDL_SCANCODE_SPACE];
+        bool firing = in && in->fire;
         if (!firing) g->results_armed = true;
         else if (g->results_armed) g->results = 1;
 
@@ -606,9 +606,9 @@ void game_update(Game *g, const Uint8 *keys)
            cleared when the next wave is handed out, so nothing leaks across
            the boundary. */
         if (g->player.alive) {
-            steer_player(g, keys);
+            steer_player(g, in);
             if (g->fire_cooldown > 0) --g->fire_cooldown;
-            if (keys[SDL_SCANCODE_SPACE] && g->fire_cooldown == 0) fire(g);
+            if (in->fire && g->fire_cooldown == 0) fire(g);
         }
         collide_shots(g);
 
@@ -656,10 +656,10 @@ void game_update(Game *g, const Uint8 *keys)
             else if (dx < -RESCUE_CENTRE_SPEED) g->player.x -= RESCUE_CENTRE_SPEED;
             else                                g->player.x  = GAME_W / 2.0f;
         } else {
-            steer_player(g, keys);
+            steer_player(g, in);
 
             if (g->fire_cooldown > 0) --g->fire_cooldown;
-            if (keys[SDL_SCANCODE_SPACE] && g->fire_cooldown == 0) fire(g);
+            if (in->fire && g->fire_cooldown == 0) fire(g);
         }
     } else {
         /* Respawn once the countdown has run out, the explosion has finished

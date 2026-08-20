@@ -82,8 +82,9 @@ fast-forwards the simulation before the first frame, `--shot out.bmp` renders
 one frame and exits, `--stats N` runs the wave headless for N ticks and reports
 what the stage's difficulty works out to and how the wave behaved under it,
 `--stage N` starts on a later stage so that difficulty can be measured without
-playing up to it, `--mute` opens no audio device, and `--trace` logs each stage
-handover. `--shot` and `--stats` mute themselves.
+playing up to it, `--mute` opens no audio device, `--padtest` runs the
+controller self test and exits, and `--trace` logs each stage handover.
+`--shot` and `--stats` mute themselves.
 
 `--trace` reports each stage handover: what was still in the air when the stage
 ended, and whether the new wave arrives with stray shots or already-damaged
@@ -595,6 +596,56 @@ at zero, so it is also motionless while the wave is still flying in.
 slots, taken from the enemies rather than from the offset: it reads -10.0 to
 +10.0.
 
+## Controllers
+
+The game does not read a keyboard. It reads three booleans — left, right, fire —
+and `input.c` is the only thing that knows where they came from. That is what
+stops "and now the same for a controller" from meaning a second `if` beside
+every existing one, and it is also what lets the headless harness drive the game
+by filling the struct in directly instead of forging a scancode array, which is
+what it used to do.
+
+Two kinds of input live there and they are not interchangeable. **Flying is
+sampled**: what matters is whether left is held right now. **Menus are
+edge-triggered**: holding a direction should move the cursor once, not sixty
+times a second. The keyboard gets its edges free from `SDL_KEYDOWN`, but a stick
+pushed to one side is a level rather than an event, so those edges have to be
+manufactured — a press threshold at 18000 and a release threshold at 9000, with
+the gap between them there to stop a stick resting near the line from chattering
+the cursor. A single threshold would do exactly that.
+
+The menu itself is four functions — up, down, confirm, back — that both the
+keyboard and the pad call. Written twice, one copy acquires a case the other
+lacks the first time anything is added; it is the same reasoning that put the
+warm-up and the interactive loop through one `play_tick`.
+
+Fire is any of the four face buttons or the right trigger. Which button is *the*
+button is a matter of what somebody grew up holding, and none of the four is
+needed for anything else in flight.
+
+### Testing it without hands
+
+Controller support is the one thing here that cannot be checked by running the
+game and looking, because checking it means somebody holding a pad. SDL can
+attach a **virtual controller** and have its axes and buttons set from code, so
+`--padtest` drives one through the real open, event, sample and close paths —
+not a mock of them — and reports 21 checks.
+
+It earned its place on the first run, with three failures that looked like three
+different problems and were one. A controller present at startup was being
+opened *twice*: once by the enumeration in `input_open`, and again by the
+`DEVICEADDED` event SDL queues for devices that were already there. The wrong
+count was the harmless part. The second handle was closed by the first unplug,
+which left the first handle dangling and being read every frame. Nothing about
+the symptoms pointed at it.
+
+The fourth failure was the test's own fault, and is worth writing down because
+it is genuinely surprising: **a virtual trigger at rest is raw −32768, not raw
+0.** The mapping normalises a full-range axis on to 0..32767, so raw 0 arrives
+as 16383 — half pressed, which fires, and correctly so. The test released the
+trigger to 0 and then reported the game as broken for doing the right thing
+with it.
+
 ## Sound
 
 Sound arrived last, and is the only part of the game that is not generated from
@@ -759,7 +810,5 @@ to *behaves like Galaga*.
 
 ## Next
 
-No controller support; the fighter is keyboard-only. That is the list.
-
-The Options screen now has something it could plausibly configure — separate
-effect and music volumes — and does not yet configure it.
+Separate effect and music volumes, which the Options screen has room for and
+reports nothing about yet. That is the list.

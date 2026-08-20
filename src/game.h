@@ -4,6 +4,7 @@
 #include "gfx.h"
 #include "formation.h"
 #include "fx.h"
+#include "input.h"
 
 /* The playable scene: the starfield, the fighter and its shots, the attack
  * wave, and everything that happens when those things touch. It owns the
@@ -121,7 +122,7 @@ void game_background_draw(Gfx *gfx);
 
 void game_init(Game *g);
 void game_restart(Game *g);           /* back to stage 1 with a full crew */
-void game_update(Game *g, const Uint8 *keys);
+void game_update(Game *g, const Input *in);
 void game_draw(Gfx *gfx, const Game *g);
 
 #endif /* CLAUDAGA_GAME_H */
