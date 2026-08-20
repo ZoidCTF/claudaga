@@ -29,15 +29,6 @@ void gfx_free_texture(Texture *t);
 /* Blits `src` from the sheet with its top-left corner at (x, y). */
 void gfx_blit(Gfx *g, const SDL_Rect *src, int x, int y);
 
-/* Same, but mirrored. The sprite sheet only stores one quadrant of each
-   flyer's rotation, so drawing the other three means mirroring - which is what
-   the arcade hardware did too. */
-void gfx_blit_flip(Gfx *g, const SDL_Rect *src, int x, int y, SDL_RendererFlip flip);
-
-/* Free rotation about the cell's centre. Not used for the flyers, whose angles
-   come from the sheet's own frames, but handy for effects. */
-void gfx_blit_rot(Gfx *g, const SDL_Rect *src, int x, int y, double angle);
-
 /* Grabs the game area (letterbox bars excluded) into a .bmp. Call it after
    drawing but before gfx_end_frame - once the frame is presented the back
    buffer's contents are not guaranteed to survive. */

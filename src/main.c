@@ -1,9 +1,11 @@
 /* Claudaga.
  *
- * Three views: the sprite browser pages through every group on the sheet with
- * its frames animating, the pose check verifies the rotation mapping, and the
- * play view is the game. The first two are tools kept in the build because
- * they are how the sprite and rotation work gets checked. */
+ * The play view is the game and is what starts. Behind it on Tab sit three
+ * tools: the shape browser shows the vector artwork and the font at a size
+ * where they can be judged, the pose check drives a shape through a full
+ * circle of headings, and the sprite browser shows the original arcade sheet
+ * the designs were drawn from. That last one is reference material only - the
+ * game does not read the sheet and does not need it present. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +14,7 @@
 
 #include "gfx.h"
 #include "atlas.h"
-#include "debugfont.h"
+#include "font.h"
 #include "shape.h"
 #include "game.h"
 
@@ -22,7 +24,8 @@ static const SDL_Color YELLOW = { 255, 216,   0, 255 };
 static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color DIM    = { 144, 144, 160, 255 };
 
-typedef enum { VIEW_BROWSER, VIEW_SHAPES, VIEW_POSE, VIEW_PLAY, VIEW_COUNT } View;
+/* Play first: the tools sit behind it on Tab rather than in front of it. */
+typedef enum { VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_BROWSER, VIEW_COUNT } View;
 
 /* ----------------------------------------------------------- shape browser */
 
@@ -49,13 +52,20 @@ static void shapes_draw(Gfx *g, int tick)
 
     /* The alternative palettes, which on the sheet needed whole second sets of
        frames drawn out. */
-    font_draw(g, 4, 214, YELLOW, "RECOLOURS");
-    Vec2 a = { 56.0f, 250.0f };
-    Vec2 b = { 152.0f, 250.0f };
+    font_draw(g, 4, 150, YELLOW, "RECOLOURS");
+    Vec2 a = { 56.0f, 186.0f };
+    Vec2 b = { 152.0f, 186.0f };
     shape_draw_pal(g, SHP_FIGHTER, a, 0.0f, S, &SHAPE_PAL_FIGHTER_CAPTURED, 1.0f);
     shape_draw_pal(g, SHP_BOSS,    b, 0.0f, S, &SHAPE_PAL_BOSS_HIT,         1.0f);
-    font_draw(g, (int)a.x - font_width("CAPTURED") / 2, 276, DIM, "CAPTURED");
-    font_draw(g, (int)b.x - font_width("BOSS HIT") / 2, 276, DIM, "BOSS HIT");
+    font_draw(g, (int)a.x - font_width("CAPTURED") / 2, 212, DIM, "CAPTURED");
+    font_draw(g, (int)b.x - font_width("BOSS HIT") / 2, 212, DIM, "BOSS HIT");
+
+    /* The font is vector artwork too, and the only way to judge glyphs is to
+       see them together at a size where the strokes are separable. */
+    font_draw(g, 4, 228, YELLOW, "FONT");
+    font_draw_scaled(g, 4.0f, 240.0f, DIM, "ABCDEFGHIJKLM", 1.6f);
+    font_draw_scaled(g, 4.0f, 256.0f, DIM, "NOPQRSTUVWXYZ", 1.6f);
+    font_draw_scaled(g, 4.0f, 272.0f, DIM, "0123456789-:/", 1.6f);
 }
 
 /* ---------------------------------------------------------------- browser */
@@ -192,15 +202,18 @@ static void pose_draw(Gfx *g, int subject)
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: claudaga [--scene] [--pose] [--page N] [--subject N]\n"
-            "              [--scale N] [--at TICK] [--paths] [--observe]\n"
-            "              [--autofire] [--trace] [--shot out.bmp] [--stats N]\n");
+            "usage: claudaga [--shapes] [--pose] [--browser] [--scene]\n"
+            "                [--page N] [--subject N] [--scale N]\n"
+            "                [--at TICK] [--paths] [--observe] [--autofire]\n"
+            "                [--trace] [--shot out.bmp] [--stats N]\n"
+            "\n"
+            "the game starts by default; the view flags select a tool instead\n");
 }
 
 int main(int argc, char **argv)
 {
     const char *shot_path = NULL;
-    View        view      = VIEW_BROWSER;
+    View        view      = VIEW_PLAY;
     int         page      = 0;
     int         subject   = 0;
     int         scale     = 3;
@@ -216,6 +229,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--scene"))                    view = VIEW_PLAY;
         else if (!strcmp(argv[i], "--pose"))                     view = VIEW_POSE;
         else if (!strcmp(argv[i], "--shapes"))                   view = VIEW_SHAPES;
+        else if (!strcmp(argv[i], "--browser"))                  view = VIEW_BROWSER;
         else if (!strcmp(argv[i], "--page")    && i + 1 < argc)  page = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--subject") && i + 1 < argc)  subject = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--scale")   && i + 1 < argc)  scale = atoi(argv[++i]);

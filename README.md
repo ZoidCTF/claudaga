@@ -44,14 +44,14 @@ Run it from the project root, since the sheet is loaded by relative path:
 build\claudaga.exe
 ```
 
-`Tab` cycles the three views.
+It starts in the game. `Tab` cycles to the three tools behind it and back.
 
 | View | Keys |
 | --- | --- |
-| Sprite browser | `←` `→` page the original sheet (reference only) |
-| Shape browser | the vector artwork at a readable size |
+| Play *(default)* | `←` `→` move, `Space` fire, `R` restart, `P` show paths and headings, `A` toggle attacks |
+| Shape browser | the vector artwork and the font, at a size where they can be judged |
 | Pose check | `←` `→` change shape |
-| Play | `←` `→` move, `Space` fire, `R` restart the game, `P` show paths and headings, `A` toggle attacks |
+| Sprite browser | `←` `→` page the original arcade sheet — reference only |
 
 `Esc` quits.
 
@@ -93,12 +93,12 @@ src/
   gfx.*         window, renderer, PNG loading, blitting, screenshots
   shape.*       vector artwork: the renderer and the transform
   shapes.c      the artwork itself, as polygons
+  font.*        stroke font: glyphs as line segments, drawn with thickness
   atlas.*       the old sheet's rects - reference for the browser only
   path.*        Catmull-Rom splines resampled by arc length
   formation.*   slots, entry flights, attacks, formation flight, state machine
   fx.*          explosion animations and the score popups
   game.*        the fighter, its shots, the starfield, collision, score, stages
-  debugfont.*   5x7 font for debug overlays
   main.c        the loop and the three views
 assets/       galaga_sheet.png
 third_party/  SDL2 2.32.10 (VC dev libs), stb_image.h - fetched, not committed
@@ -151,6 +151,22 @@ value rather than only the boss tiers the sheet had sprites for.
 Formation enemies used to flap by alternating two drawn poses. With a shape that
 can scale freely, a slow pulse reads as the same thing and needs no second
 drawing.
+
+### The font
+
+Text is a stroke font: each glyph is a handful of line segments, drawn with real
+thickness as geometry. It replaced a 5x7 bitmap that scaled by turning every
+pixel into a bigger square, and looked increasingly out of place beside artwork
+that had gone smooth.
+
+The metrics are deliberately the ones the bitmap had, so every caller and every
+piece of layout arithmetic still lines up. The style is squared off, because
+curves cost segments and read no better at this size, and stroke ends are
+extended by the half-width so corners close up instead of leaving a notch —
+cheaper than mitring the joint and, at this size, indistinguishable from it.
+
+The shape browser draws the whole alphabet, which is the only practical way to
+judge glyphs.
 
 ## The sprite sheet
 
@@ -412,16 +428,17 @@ along the bottom right (removed for now, since they were sheet art wired to
 nothing), and the sixteen challenging-stage flyers. Drawing those as shapes is
 what would let the sheet leave the repository altogether.
 
-`atlas.c` is now dead weight for the game — `atlas_pose`, `atlas_idle_frame` and
-`atlas_missile_dir` have no callers left. It stays only to feed the browser, and
-should be trimmed to what that actually needs.
+`atlas.c` has been trimmed to what the browser actually needs — `atlas_pose`,
+`atlas_idle_frame` and `atlas_missile_dir` are gone, along with `gfx_blit_flip`
+and `gfx_blit_rot`. What remains is the sheet's rect table, and it cannot go
+until the tractor beam, the stage flags and the challenging-stage flyers are
+drawn as shapes, because the browser is how that artwork gets designed from the
+original.
 
 Mechanically: the tractor beam capture and the dual fighter are the marquee
 feature still missing; then the formation's side-to-side sway, a difficulty ramp
 so the attack rate climbs with the stage rather than sitting fixed, and the
 challenging stages.
 
-Smaller gaps: text still uses the 5x7 debug font, so a proper HUD wants a real
-one — and a vector font would now suit the rest of the game better than a ripped
-bitmap. There is no sound, and the extra-life award at 20,000 points is not
-implemented.
+Smaller gaps: there is no sound, and the extra-life award at 20,000 points is
+not implemented.

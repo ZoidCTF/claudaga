@@ -79,12 +79,6 @@ typedef struct {
     int         rot_frames;              /* leading frames that are rotations */
 } Sprite;
 
-/* Which frame to draw, and how to mirror it, for a given heading. */
-typedef struct {
-    int              frame;
-    SDL_RendererFlip flip;
-} SpritePose;
-
 /* Fills in the sprite table. Cheap, no allocation, safe to call more than
    once. Must run before any of the accessors below. */
 void atlas_init(void);
@@ -93,22 +87,5 @@ const Sprite    *atlas_get(SpriteId id);
 const SDL_Rect  *atlas_frame(SpriteId id, int frame); /* wraps out-of-range */
 int              atlas_count(SpriteId id);
 const char      *atlas_name(SpriteId id);
-
-/* Every flyer stores the same thing: seven frames turning counter-clockwise
-   from north (frame 6) to west (frame 0), 15 degrees at a time. That is one
-   quadrant; mirroring it horizontally, vertically, or both covers the other
-   three, which is exactly the trick the arcade hardware used. Returns the
-   frame and mirroring for any heading. Sprites that do not rotate always come
-   back as frame 0 unflipped. */
-SpritePose atlas_pose(SpriteId id, float heading_deg);
-
-/* Frames 6 and 7 are both north-facing; enemies alternate them to flap their
-   wings while parked in formation. `phase` picks between them and may be any
-   free-running counter. Sprites with only rotation frames ignore it. */
-int atlas_idle_frame(SpriteId id, int phase);
-
-/* Picks the enemy-missile frame for a velocity, snapping to the nearest of
-   the eight headings the sheet provides. */
-MissileDir atlas_missile_dir(float vx, float vy);
 
 #endif /* CLAUDAGA_ATLAS_H */

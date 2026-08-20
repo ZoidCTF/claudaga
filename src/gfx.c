@@ -107,18 +107,6 @@ void gfx_blit(Gfx *g, const SDL_Rect *src, int x, int y)
     SDL_RenderCopy(g->renderer, g->sheet.tex, src, &dst);
 }
 
-void gfx_blit_flip(Gfx *g, const SDL_Rect *src, int x, int y, SDL_RendererFlip flip)
-{
-    SDL_Rect dst = { x, y, src->w, src->h };
-    SDL_RenderCopyEx(g->renderer, g->sheet.tex, src, &dst, 0.0, NULL, flip);
-}
-
-void gfx_blit_rot(Gfx *g, const SDL_Rect *src, int x, int y, double angle)
-{
-    SDL_Rect dst = { x, y, src->w, src->h };
-    SDL_RenderCopyEx(g->renderer, g->sheet.tex, src, &dst, angle, NULL, SDL_FLIP_NONE);
-}
-
 bool gfx_screenshot(Gfx *g, const char *path)
 {
     /* A NULL rect makes SDL read back the current viewport, which under
