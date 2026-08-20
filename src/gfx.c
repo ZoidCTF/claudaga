@@ -35,11 +35,15 @@ bool gfx_init(Gfx *g, const char *title, int scale)
         return false;
     }
 
-    /* Draw in 224x288 units and let SDL letterbox the result. Integer scaling
-       keeps every game pixel the same size on screen; without it a window at,
-       say, 1.5x would make some rows of pixels twice as tall as others. */
+    /* Draw in 224x288 units and let SDL letterbox the result.
+       Integer scaling used to be on, because with raster sprites a fractional
+       zoom made some rows of pixels taller than others. The artwork is
+       geometry now, so it can be drawn at whatever size the window actually
+       is: the logical size keeps the game's coordinates - and therefore its
+       paths, speeds and collision radii - in the same 224x288 units, while the
+       picture itself is resolution independent. */
     SDL_RenderSetLogicalSize(g->renderer, GAME_W, GAME_H);
-    SDL_RenderSetIntegerScale(g->renderer, SDL_TRUE);
+    SDL_RenderSetIntegerScale(g->renderer, SDL_FALSE);
 
     return true;
 }

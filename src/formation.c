@@ -12,21 +12,21 @@
    bosses and the first butterflies in the opening flight, as on the real
    board. */
 typedef struct {
-    SpriteId sprite;
-    int      first_col, count;
+    ShapeId shape;
+    int     first_col, count;
 } SlotRank;
 
 static const SlotRank SLOT_RANKS[FORM_ROWS] = {
-    { SPR_BOSS_GREEN, 3, 4  },
-    { SPR_BUTTERFLY,  1, 8  },
-    { SPR_BUTTERFLY,  1, 8  },
-    { SPR_BEE,        0, 10 },
-    { SPR_BEE,        0, 10 },
+    { SHP_BOSS,      3, 4  },
+    { SHP_BUTTERFLY, 1, 8  },
+    { SHP_BUTTERFLY, 1, 8  },
+    { SHP_BEE,       0, 10 },
+    { SHP_BEE,       0, 10 },
 };
 
 typedef struct {
-    SpriteId sprite;
-    int      col, row;
+    ShapeId shape;
+    int     col, row;
 } Slot;
 
 static Slot s_slots[MAX_ENEMIES];
@@ -39,7 +39,7 @@ static void build_slots(void)
         const SlotRank *rank = &SLOT_RANKS[r];
         for (int i = 0; i < rank->count && s_slot_count < MAX_ENEMIES; ++i) {
             Slot *sl = &s_slots[s_slot_count++];
-            sl->sprite = rank->sprite;
+            sl->shape  = rank->shape;
             sl->col    = rank->first_col + i;
             sl->row    = r;
         }
@@ -150,7 +150,7 @@ static const Flight FLIGHTS[FLIGHT_COUNT] = {
 #define FIRE_MIN_HEIGHT   44.0f   /* must be this far above the fighter's row */
 #define FIRE_MAX_SLOPE    1.0f    /* |dx| <= dy: 45 degrees from straight down */
 
-static bool is_boss(SpriteId s);
+static bool is_boss(ShapeId s);
 
 /* ------------------------------------------------------------------- rng */
 
@@ -247,7 +247,7 @@ void wave_restart(Wave *w)
         const Flight *fl = &FLIGHTS[i / FLIGHT_SIZE];
         int within = i % FLIGHT_SIZE;
 
-        e->sprite      = s_slots[i].sprite;
+        e->shape       = s_slots[i].shape;
         e->state       = ENEMY_WAITING;
         e->slot        = i;
         e->path        = (within & 1) ? fl->path_b : fl->path_a;
@@ -340,14 +340,14 @@ static void join_dive(Wave *w, Enemy *e, int path_idx, float lead, float lateral
     e->state        = ENEMY_DIVING;
     ++w->dive_refs[path_idx];
 
-    if (is_boss(e->sprite))              ++w->dives_boss;
-    else if (e->sprite == SPR_BUTTERFLY) ++w->dives_butterfly;
-    else                                 ++w->dives_bee;
+    if (is_boss(e->shape))              ++w->dives_boss;
+    else if (e->shape == SHP_BUTTERFLY) ++w->dives_butterfly;
+    else                                ++w->dives_bee;
 }
 
-static bool is_boss(SpriteId s)
+static bool is_boss(ShapeId s)
 {
-    return s == SPR_BOSS_GREEN || s == SPR_BOSS_BLUE;
+    return s == SHP_BOSS;
 }
 
 /* Sends the next attack. A boss is preferred when one is parked, because a
@@ -355,10 +355,10 @@ static bool is_boss(SpriteId s)
    signature attack; otherwise anything still sitting there will do. */
 enum { TYPE_BOSS, TYPE_BUTTERFLY, TYPE_BEE, TYPE_COUNT };
 
-static int type_of(SpriteId s)
+static int type_of(ShapeId s)
 {
-    if (is_boss(s))            return TYPE_BOSS;
-    if (s == SPR_BUTTERFLY)    return TYPE_BUTTERFLY;
+    if (is_boss(s))          return TYPE_BOSS;
+    if (s == SHP_BUTTERFLY)  return TYPE_BUTTERFLY;
     return TYPE_BEE;
 }
 
@@ -370,7 +370,7 @@ static void launch_attack(Wave *w, float player_x)
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         const Enemy *e = &w->enemies[i];
         if (e->state != ENEMY_FORMED) continue;
-        int t = type_of(e->sprite);
+        int t = type_of(e->shape);
         ready[t][n[t]++] = i;
     }
     if (n[0] + n[1] + n[2] == 0) return;
@@ -423,7 +423,7 @@ static void launch_attack(Wave *w, float player_x)
         for (int i = 0; i < MAX_ENEMIES; ++i) {
             Enemy *e = &w->enemies[i];
             if (e->state != ENEMY_FORMED) continue;
-            if (e->sprite != SPR_BUTTERFLY) continue;
+            if (e->shape != SHP_BUTTERFLY) continue;
             float d = fabsf(e->pos.x - bx);
             if (d < best_d) { best_d = d; best = i; }
         }
@@ -453,34 +453,35 @@ static int escorts_on(const Wave *w, int path_idx)
 bool wave_hit(Wave *w, int index, int *score, int *popup)
 {
     *score = 0;
-    *popup = -1;
+    *popup = 0;
     if (index < 0 || index >= MAX_ENEMIES) return false;
 
     Enemy *e = &w->enemies[index];
     if (e->state == ENEMY_DEAD || e->state == ENEMY_WAITING) return false;
 
-    /* A Boss Galaga shrugs off the first shot and changes colour. Which of the
-       sheet's two palettes is the damaged one is still a guess; see the README. */
-    if (is_boss(e->sprite) && e->hits == 0) {
-        e->hits   = 1;
-        e->sprite = SPR_BOSS_BLUE;
+    /* A Boss Galaga shrugs off the first shot. Nothing swaps here: `hits` is
+       what the draw picks its palette from, so damage is a recolour rather
+       than a second set of artwork. */
+    if (is_boss(e->shape) && e->hits == 0) {
+        e->hits = 1;
         return false;
     }
 
     bool diving = (e->state == ENEMY_DIVING);
 
-    if (is_boss(e->sprite)) {
+    if (is_boss(e->shape)) {
         if (!diving) {
-            *score = 150; *popup = SCORE_150;
+            *score = 150;
         } else {
             /* The escort still flying with it is what the bonus is paid for. */
             switch (escorts_on(w, e->dive_path)) {
-            case 0:  *score =  400; *popup = SCORE_400;  break;
-            case 1:  *score =  800; *popup = SCORE_800;  break;
-            default: *score = 1600; *popup = SCORE_1600; break;
+            case 0:  *score =  400; break;
+            case 1:  *score =  800; break;
+            default: *score = 1600; break;
             }
         }
-    } else if (e->sprite == SPR_BUTTERFLY) {
+        *popup = *score;   /* boss kills are the ones the arcade puts on screen */
+    } else if (e->shape == SHP_BUTTERFLY) {
         *score = diving ? 160 : 80;
     } else {
         *score = diving ? 100 : 50;
@@ -781,10 +782,10 @@ void wave_draw(Gfx *g, const Wave *w)
     for (int i = 0; i < MAX_ENEMY_SHOTS; ++i) {
         const EnemyShot *s = &w->shot[i];
         if (!s->alive) continue;
-        MissileDir dir = atlas_missile_dir(s->vel.x, s->vel.y);
-        const SDL_Rect *src = atlas_frame(SPR_ENEMY_MISSILE, dir);
-        gfx_blit(g, src, (int)(s->pos.x - src->w / 2),
-                         (int)(s->pos.y - src->h / 2));
+        /* The missile points along its velocity - no direction rose to pick a
+           frame from any more, the shape just turns. */
+        shape_draw(g, SHP_ENEMY_SHOT, s->pos,
+                   heading_from_vec(s->vel.x, s->vel.y), 1.0f);
     }
 
     for (int i = 0; i < MAX_ENEMIES; ++i) {
@@ -803,18 +804,22 @@ void wave_draw(Gfx *g, const Wave *w)
                                (int)(e->pos.y - cosf(rad) * 11.0f));
         }
 
+        /* A damaged boss is the same shape in a different palette. */
+        const ShapePalette *pal =
+            (is_boss(e->shape) && e->hits > 0) ? &SHAPE_PAL_BOSS_HIT : NULL;
+
+        float heading = e->heading;
+        float scale   = 1.0f;
+
         if (e->state == ENEMY_FORMED) {
-            /* Parked enemies are upright, so they skip the rotated path and
-               flap instead. Dividing the tick spreads the beat over frames. */
-            const SDL_Rect *src = atlas_frame(e->sprite,
-                                              atlas_idle_frame(e->sprite, w->tick / 24));
-            gfx_blit(g, src, (int)(e->pos.x - src->w / 2),
-                             (int)(e->pos.y - src->h / 2));
-        } else {
-            SpritePose pose = atlas_pose(e->sprite, e->heading);
-            const SDL_Rect *src = atlas_frame(e->sprite, pose.frame);
-            gfx_blit_flip(g, src, (int)(e->pos.x - src->w / 2),
-                                  (int)(e->pos.y - src->h / 2), pose.flip);
+            /* Parked enemies sit upright and breathe. The sheet did this by
+               alternating two drawn poses; with one shape that can turn and
+               scale freely, a slow pulse reads as the same thing and needs no
+               second drawing. */
+            heading = HEADING_N;
+            scale   = 1.0f + 0.07f * sinf((float)(w->tick + i * 7) * 0.09f);
         }
+
+        shape_draw_pal(g, e->shape, e->pos, heading, scale, pal, 1.0f);
     }
 }

@@ -13,6 +13,7 @@
 #include "gfx.h"
 #include "atlas.h"
 #include "debugfont.h"
+#include "shape.h"
 #include "game.h"
 
 #define SHEET_PATH "assets/galaga_sheet.png"
@@ -21,7 +22,41 @@ static const SDL_Color YELLOW = { 255, 216,   0, 255 };
 static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color DIM    = { 144, 144, 160, 255 };
 
-typedef enum { VIEW_BROWSER, VIEW_POSE, VIEW_PLAY, VIEW_COUNT } View;
+typedef enum { VIEW_BROWSER, VIEW_SHAPES, VIEW_POSE, VIEW_PLAY, VIEW_COUNT } View;
+
+/* ----------------------------------------------------------- shape browser */
+
+/* Every vector shape at a readable size, plus the two recoloured variants.
+   Judging artwork needs it big and still; rotation is checked by the pose
+   view, which drives the same shapes through a full circle. */
+static void shapes_draw(Gfx *g, int tick)
+{
+    (void)tick;
+    font_draw(g, 4, 2, YELLOW, "VECTOR SHAPES");
+
+    static const ShapeId row[6] = {
+        SHP_FIGHTER, SHP_BEE, SHP_BUTTERFLY,
+        SHP_BOSS, SHP_PLAYER_SHOT, SHP_ENEMY_SHOT,
+    };
+    const float S = 2.6f;
+
+    for (int i = 0; i < 6; ++i) {
+        Vec2 p = { 40.0f + (i % 3) * 72.0f, 48.0f + (i / 3) * 84.0f };
+        shape_draw(g, row[i], p, 0.0f, S);
+        const char *n = shape_name(row[i]);
+        font_draw(g, (int)p.x - font_width(n) / 2, (int)p.y + 30, DIM, n);
+    }
+
+    /* The alternative palettes, which on the sheet needed whole second sets of
+       frames drawn out. */
+    font_draw(g, 4, 214, YELLOW, "RECOLOURS");
+    Vec2 a = { 56.0f, 250.0f };
+    Vec2 b = { 152.0f, 250.0f };
+    shape_draw_pal(g, SHP_FIGHTER, a, 0.0f, S, &SHAPE_PAL_FIGHTER_CAPTURED, 1.0f);
+    shape_draw_pal(g, SHP_BOSS,    b, 0.0f, S, &SHAPE_PAL_BOSS_HIT,         1.0f);
+    font_draw(g, (int)a.x - font_width("CAPTURED") / 2, 276, DIM, "CAPTURED");
+    font_draw(g, (int)b.x - font_width("BOSS HIT") / 2, 276, DIM, "BOSS HIT");
+}
 
 /* ---------------------------------------------------------------- browser */
 
@@ -56,8 +91,17 @@ static int paginate(int *starts, int max_pages)
     return pages + 1;
 }
 
-static void browser_draw(Gfx *g, int page, int page_count, const int *starts, int tick)
+static void browser_draw(Gfx *g, int page, int page_count, const int *starts,
+                         int tick, bool have_sheet)
 {
+    if (!have_sheet) {
+        font_draw(g, 4, 2, YELLOW, "SPRITE ATLAS");
+        font_draw(g, 4, 16, DIM, "NO SHEET LOADED - NOTHING TO SHOW");
+        font_draw(g, 4, 26, DIM, "THE GAME DOES NOT NEED IT");
+        font_draw(g, 4, GAME_H - 9, CYAN, "TAB VIEW  ESC QUIT");
+        return;
+    }
+
     char head[64];
     snprintf(head, sizeof head, "SPRITE ATLAS  PAGE %d/%d", page + 1, page_count);
     font_draw(g, 4, 2, YELLOW, head);
@@ -99,24 +143,27 @@ static void browser_draw(Gfx *g, int page, int page_count, const int *starts, in
 /* ------------------------------------------------------------- pose check */
 
 /* Draws one flyer at headings all the way round a circle, each copy placed in
-   the direction it is supposed to be facing. If atlas_pose is right every
-   sprite points directly away from the centre, like spokes; anything pointing
-   inward, sideways, or mirrored is a bug in the quadrant or flip mapping. The
-   flyers are close to symmetric, so this is far easier to trust than watching
-   one fly a curve. */
+   the direction it is supposed to be facing, so every one should point
+   straight out from the centre like a spoke.
+
+   This mattered a great deal with the sprite sheet, where a heading had to be
+   resolved to one of seven stored frames plus a choice of mirrorings and any
+   mistake in that mapping put a ship on backwards. The shapes simply rotate,
+   so the check is close to a formality now - but it is the thing that would
+   catch a sign error in the rotation matrix, and it costs nothing to keep. */
 
 #define POSE_STEPS 24
 
-static const SpriteId POSE_SUBJECTS[] = {
-    SPR_FIGHTER, SPR_BEE, SPR_BUTTERFLY, SPR_BOSS_GREEN,
+static const ShapeId POSE_SUBJECTS[] = {
+    SHP_FIGHTER, SHP_BEE, SHP_BUTTERFLY, SHP_BOSS,
 };
 
 static void pose_draw(Gfx *g, int subject)
 {
-    SpriteId id = POSE_SUBJECTS[subject];
+    ShapeId id = POSE_SUBJECTS[subject];
 
     char head[64];
-    snprintf(head, sizeof head, "POSE CHECK  %s", atlas_name(id));
+    snprintf(head, sizeof head, "POSE CHECK  %s", shape_name(id));
     font_draw(g, 4, 2, YELLOW, head);
     font_draw(g, 4, 11, DIM, "ALL SHOULD POINT OUTWARD");
 
@@ -129,20 +176,15 @@ static void pose_draw(Gfx *g, int subject)
         float rad     = heading * (float)M_PI / 180.0f;
 
         /* Place it in the direction it claims to face: north is -y. */
-        float x = cx + sinf(rad) * r;
-        float y = cy - cosf(rad) * r;
-
-        SpritePose pose = atlas_pose(id, heading);
-        const SDL_Rect *src = atlas_frame(id, pose.frame);
-        gfx_blit_flip(g, src, (int)(x - src->w / 2.0f), (int)(y - src->h / 2.0f),
-                      pose.flip);
+        Vec2 p = { cx + sinf(rad) * r, cy - cosf(rad) * r };
+        shape_draw(g, id, p, heading, 1.3f);
     }
 
-    /* The same sprite upright in the middle, for comparison. */
-    const SDL_Rect *up = atlas_frame(id, atlas_pose(id, HEADING_N).frame);
-    gfx_blit(g, up, (int)(cx - up->w / 2.0f), (int)(cy - up->h / 2.0f));
+    /* The same shape upright in the middle, for comparison. */
+    Vec2 mid = { cx, cy };
+    shape_draw(g, id, mid, HEADING_N, 1.3f);
 
-    font_draw(g, 4, GAME_H - 9, CYAN, "TAB VIEW  < > SPRITE  ESC QUIT");
+    font_draw(g, 4, GAME_H - 9, CYAN, "TAB VIEW  < > SHAPE  ESC QUIT");
 }
 
 /* ------------------------------------------------------------------- main */
@@ -173,6 +215,7 @@ int main(int argc, char **argv)
         if (!strcmp(argv[i], "--shot") && i + 1 < argc)          shot_path = argv[++i];
         else if (!strcmp(argv[i], "--scene"))                    view = VIEW_PLAY;
         else if (!strcmp(argv[i], "--pose"))                     view = VIEW_POSE;
+        else if (!strcmp(argv[i], "--shapes"))                   view = VIEW_SHAPES;
         else if (!strcmp(argv[i], "--page")    && i + 1 < argc)  page = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--subject") && i + 1 < argc)  subject = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--scale")   && i + 1 < argc)  scale = atoi(argv[++i]);
@@ -192,12 +235,19 @@ int main(int argc, char **argv)
 
     atlas_init();
 
-    if (!gfx_load_texture(&g, &g.sheet, SHEET_PATH, true)) {
-        fprintf(stderr, "could not load " SHEET_PATH " - run from the project root.\n");
-        gfx_shutdown(&g);
-        return 1;
+    /* The sheet is no longer needed to play: everything in the game is drawn
+       from vector shapes now, and it survives only so the browser can show the
+       artwork this was originally built from. Missing it is therefore a note,
+       not a failure - which is what lets the project ship without carrying
+       somebody else's sprite sheet. */
+    bool have_sheet = gfx_load_texture(&g, &g.sheet, SHEET_PATH, true);
+    if (have_sheet) {
+        printf("sheet %dx%d, %d sprite groups\n", g.sheet.w, g.sheet.h, (int)SPR_COUNT);
+    } else {
+        printf("no sheet at " SHEET_PATH " - browser view disabled, "
+               "everything else is unaffected\n");
+        if (view == VIEW_BROWSER) view = VIEW_SHAPES;
     }
-    printf("sheet %dx%d, %d sprite groups\n", g.sheet.w, g.sheet.h, (int)SPR_COUNT);
 
     int starts[32];
     int page_count = paginate(starts, ARRAY_COUNT(starts));
@@ -304,7 +354,9 @@ int main(int argc, char **argv)
         gfx_begin_frame(&g);
         if (view == VIEW_PLAY)        game_draw(&g, &game);
         else if (view == VIEW_POSE)   pose_draw(&g, subject);
-        else                          browser_draw(&g, page, page_count, starts, tick);
+        else if (view == VIEW_SHAPES) shapes_draw(&g, tick);
+        else                          browser_draw(&g, page, page_count, starts,
+                                                   tick, have_sheet);
 
         if (shot_path) {
             gfx_screenshot(&g, shot_path);

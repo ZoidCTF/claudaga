@@ -1,10 +1,13 @@
 # Claudaga
 
-A Galaga clone in C99 on SDL2, built with MSVC. The sprite sheet is loaded and
-fully indexed, the rotation system is in and verified, the attack wave flies its
-scripted entry into formation, and once assembled it attacks — enemies dive at
-the player, fire back, leave the screen, and come round again. Shots kill,
-collisions kill, the score counts, and clearing a wave starts the next stage.
+A Galaga clone in C99 on SDL2, built with MSVC. The attack wave flies a
+scripted entry into formation and then attacks — enemies dive, fire back, leave
+the screen and come round again. Shots kill, collisions kill, the score counts,
+and clearing a wave starts the next stage.
+
+Everything that flies is **vector artwork**, drawn as coloured triangles rather
+than blitted from a sheet. The game renders at whatever size the window is, the
+flyers turn to any angle, and it needs no sprite sheet to run.
 
 ## Build and run
 
@@ -45,13 +48,14 @@ build\claudaga.exe
 
 | View | Keys |
 | --- | --- |
-| Sprite browser | `←` `→` page through all 30 groups |
-| Pose check | `←` `→` change sprite |
+| Sprite browser | `←` `→` page the original sheet (reference only) |
+| Shape browser | the vector artwork at a readable size |
+| Pose check | `←` `→` change shape |
 | Play | `←` `→` move, `Space` fire, `R` restart the game, `P` show paths and headings, `A` toggle attacks |
 
 `Esc` quits.
 
-Flags: `--scene` / `--pose` pick a starting view, `--page N` and `--subject N`
+Flags: `--scene` / `--pose` / `--shapes` pick a starting view, `--page N` and `--subject N`
 pick within it, `--scale N` sets the window zoom (default 3), `--paths` turns on
 the path overlay, `--at TICK` fast-forwards the simulation before the first
 frame, `--shot out.bmp` renders one frame and exits, `--stats N` runs the wave
@@ -87,7 +91,9 @@ entirely for that reason.
 src/
   common.h      screen geometry, Vec2, heading constants
   gfx.*         window, renderer, PNG loading, blitting, screenshots
-  atlas.*       sprite rects, frame counts, and the heading to pose mapping
+  shape.*       vector artwork: the renderer and the transform
+  shapes.c      the artwork itself, as polygons
+  atlas.*       the old sheet's rects - reference for the browser only
   path.*        Catmull-Rom splines resampled by arc length
   formation.*   slots, entry flights, attacks, formation flight, state machine
   fx.*          explosion animations and the score popups
@@ -101,10 +107,59 @@ tools/        fetch_deps.bat    - downloads the two dependencies
 ```
 
 The picture is 224x288, the arcade's 288x224 raster turned upright for a
-vertical cabinet. `SDL_RenderSetLogicalSize` plus integer scaling blows it up to
-the window without ever making one game pixel taller than its neighbour.
+vertical cabinet. `SDL_RenderSetLogicalSize` keeps the game's coordinates — and
+therefore its paths, speeds and collision radii — in those units whatever the
+window size. Integer scaling used to be on, because a fractional zoom made some
+rows of raster pixels taller than others; with geometry there is nothing to
+align, so it is off and the picture is drawn at the window's real resolution.
+
+## Vector artwork
+
+Every flyer, shot and explosion is geometry, fed to `SDL_RenderGeometry` as
+coloured triangles. No new dependency, and three things fall out of it that the
+sheet could not give:
+
+- **Resolution independence.** The game is drawn at the window's true size
+  instead of an integer multiple of 224x288.
+- **Continuous rotation.** A shape simply turns to its heading. The sheet stored
+  seven frames covering one quadrant and mirrored them for the rest, which is
+  what the hardware did in 1981; that whole mapping is retired.
+- **Free recolouring.** A damaged Boss Galaga and the captured red fighter are
+  palette swaps of the same drawing. On the sheet each needed a second full set
+  of frames.
+
+Shapes are authored in `shapes.c` in the units the game already thinks in: one
+unit is one pixel of the 224x288 picture, the origin is the sprite's centre, and
+the artwork faces north. They occupy the same 16x16 the sheet's cells did, so
+the collision radii tuned against those cells still hold and nothing about
+gameplay shifted.
+
+Two conventions do most of the work. Only the **right half** of each design is
+written out, with a `mirror` flag drawing it again flipped — which halves the
+typing and makes the symmetry exact rather than something to get right twice.
+And every polygon is a **convex fan**, which is a constraint on the artwork
+rather than a limitation worth engineering around: a concave wing is two convex
+pieces, and keeping the renderer a fan means there is no triangulator to write
+or get wrong.
+
+The explosions are generated rather than drawn. As raster art they were four and
+five fixed frames; as geometry it costs less and reads better to throw shards
+outward and let them fade, each blast carrying a seed so two deaths in the same
+spot are not the same picture. Score popups are drawn as text, which covers any
+value rather than only the boss tiers the sheet had sprites for.
+
+Formation enemies used to flap by alternating two drawn poses. With a shape that
+can scale freely, a slow pulse reads as the same thing and needs no second
+drawing.
 
 ## The sprite sheet
+
+The game no longer needs it. Nothing in play is drawn from it, it is not
+required to start — the browser view simply switches itself off if it is absent
+— and the project can therefore ship without carrying somebody else's artwork.
+It is kept for now because it is still the reference for the parts not yet
+rebuilt: the tractor beam, the sixteen challenging-stage flyers, and the stage
+flags.
 
 `assets/galaga_sheet.png` is the Spriters Resource rip credited on the sheet
 itself to 125scratch, xdonthave1xx, and Goemar. It is a 458x256 palette PNG.
@@ -143,23 +198,20 @@ the sheet is ever replaced.
 
 ## Rotation
 
-Every flyer stores the same thing: **seven frames turning counter-clockwise from
-north (frame 6) to west (frame 0), 15 degrees apart.** That is one quadrant.
-Mirroring it horizontally, vertically, or both covers the other three, which is
-exactly the trick the arcade hardware used, and it is what `atlas_pose` does.
-The enemies carry an eighth frame that is a second north-facing pose; frames 6
-and 7 are the pair they alternate to flap their wings in formation.
+Shapes rotate continuously, so there is nothing to map. The **pose check** view
+draws one at 24 headings, each placed in the direction it claims to face, and
+every copy should point straight out from the centre like a spoke. That check
+mattered a great deal against the sheet, where a heading had to be resolved to
+one of seven stored frames plus a choice of mirrorings and any slip put a ship
+on backwards; against geometry it is close to a formality, but it is what would
+catch a sign error in the rotation matrix and it costs nothing to keep.
 
-This was established rather than assumed: rotating frame 6 counter-clockwise by
-90 degrees reproduces frame 0 for the fighter, bee, butterfly, and boss alike.
-The **pose check** view then verifies the mapping end to end by drawing a sprite
-at 24 headings, each placed in the direction it claims to face — every copy
-should point straight out from the centre, and any quadrant or mirror mistake
-shows up immediately as one pointing the wrong way.
-
-A consequence worth knowing: the sheet's natural orientation is north, so
-enemies parked in formation are drawn *unflipped* and therefore face away from
-the player. They turn to face where they are going as soon as they move.
+For the record, since the mapping is gone from the code: the sheet stored seven
+frames turning counter-clockwise from north (frame 6) to west (frame 0), 15
+degrees apart — one quadrant, mirrored horizontally, vertically or both to reach
+the other three, exactly as the arcade hardware did it. That was established
+rather than assumed, by rotating frame 6 counter-clockwise by 90 degrees and
+finding it reproduced frame 0 for the fighter, bee, butterfly and boss alike.
 
 ## Formation entry
 
@@ -355,12 +407,21 @@ to *behaves like Galaga*.
 
 ## Next
 
-The tractor beam capture and the dual fighter are the marquee mechanic still
-missing, and the 48x80 beam animation is indexed and unused waiting for it.
-Alongside that: the formation's side-to-side breathing, a difficulty ramp so the
-attack rate climbs with the stage rather than sitting fixed, and the challenging
-stages, which is what the sixteen unnamed bonus flyers are for.
+Still on the sheet rather than in vectors: the tractor beam, the stage flags
+along the bottom right (removed for now, since they were sheet art wired to
+nothing), and the sixteen challenging-stage flyers. Drawing those as shapes is
+what would let the sheet leave the repository altogether.
 
-Smaller gaps: the score uses the debug font because the sheet carries no
-alphabet, so a proper HUD needs the arcade font ripped; there is no sound; and
-the extra-life award at 20,000 points is not implemented.
+`atlas.c` is now dead weight for the game — `atlas_pose`, `atlas_idle_frame` and
+`atlas_missile_dir` have no callers left. It stays only to feed the browser, and
+should be trimmed to what that actually needs.
+
+Mechanically: the tractor beam capture and the dual fighter are the marquee
+feature still missing; then the formation's side-to-side sway, a difficulty ramp
+so the attack rate climbs with the stage rather than sitting fixed, and the
+challenging stages.
+
+Smaller gaps: text still uses the 5x7 debug font, so a proper HUD wants a real
+one — and a vector font would now suit the rest of the game better than a ripped
+bitmap. There is no sound, and the extra-life award at 20,000 points is not
+implemented.

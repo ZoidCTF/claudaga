@@ -2,7 +2,7 @@
 #define CLAUDAGA_FORMATION_H
 
 #include "gfx.h"
-#include "atlas.h"
+#include "shape.h"
 #include "path.h"
 
 /* The attack wave: how it assembles, and how it attacks.
@@ -38,7 +38,7 @@ typedef enum {
 } EnemyState;
 
 typedef struct {
-    SpriteId   sprite;
+    ShapeId    shape;
     EnemyState state;
     int        hits;         /* a Boss Galaga survives the first one */
     int        slot;
@@ -153,9 +153,9 @@ bool wave_cleared(const Wave *w);
 void wave_clear_shots(Wave *w);
 
 /* Registers a hit. Returns true if that killed it, false if it only took
-   damage - which only a Boss Galaga does, changing colour on the way. `score`
-   receives the points earned, and `popup` the score sprite to show, or -1 for
-   the ranks whose values the arcade does not display. */
+   damage - which only a Boss Galaga does, switching to its damaged palette on
+   the way. `score` receives the points earned, and `popup` is set to the same
+   value when the kill is one the arcade puts on screen, or 0 when it is not. */
 bool wave_hit(Wave *w, int index, int *score, int *popup);
 
 /* How close something has to be to an enemy's centre to count as a hit. The

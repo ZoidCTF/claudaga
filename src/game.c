@@ -96,7 +96,7 @@ static void trace_new_wave(const Game *g)
     int damaged = 0, live_shots = 0;
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         const Enemy *e = &g->wave.enemies[i];
-        if (e->hits > 0 || e->sprite == SPR_BOSS_BLUE) ++damaged;
+        if (e->hits > 0) ++damaged;
     }
     for (int i = 0; i < MAX_SHOTS; ++i) if (g->shots[i].alive) ++live_shots;
     int enemy_shots = 0;
@@ -173,14 +173,14 @@ static void collide_shots(Game *g)
             if (dist2(sh->pos, en->pos) > R_SHOT_ENEMY * R_SHOT_ENEMY) continue;
 
             Vec2 at = en->pos;
-            int  score = 0, popup = -1;
+            int  score = 0, popup = 0;
             bool killed = wave_hit(&g->wave, e, &score, &popup);
 
             sh->alive = false;
             if (killed) {
                 g->score += score;
                 fx_blast_enemy(&g->fx, at);
-                if (popup >= 0) fx_score(&g->fx, at, (ScoreValue)popup);
+                if (popup > 0) fx_score(&g->fx, at, popup);
             }
             break;
         }
@@ -339,14 +339,12 @@ void game_draw(Gfx *gfx, const Game *g)
     for (int i = 0; i < MAX_SHOTS; ++i) {
         const Shot *sh = &g->shots[i];
         if (!sh->alive) continue;
-        const SDL_Rect *src = atlas_frame(SPR_PLAYER_MISSILE, 0);
-        gfx_blit(gfx, src, (int)(sh->pos.x - src->w / 2),
-                           (int)(sh->pos.y - src->h / 2));
+        shape_draw(gfx, SHP_PLAYER_SHOT, sh->pos, HEADING_N, 1.0f);
     }
 
     if (g->player.alive) {
-        const SDL_Rect *src = atlas_frame(SPR_FIGHTER, 6);
-        gfx_blit(gfx, src, (int)(g->player.x - src->w / 2), PLAYER_Y - src->h / 2);
+        Vec2 p = { g->player.x, (float)PLAYER_Y };
+        shape_draw(gfx, SHP_FIGHTER, p, HEADING_N, 1.0f);
     }
 
     fx_draw(gfx, &g->fx);
@@ -361,18 +359,14 @@ void game_draw(Gfx *gfx, const Game *g)
     snprintf(buf, sizeof buf, "STAGE %d", g->stage);
     font_draw(gfx, GAME_W - font_width(buf) - 4, 2, CYAN, buf);
 
-    /* Spare lives bottom left, stage flags bottom right. */
-    const SDL_Rect *life = atlas_frame(SPR_LIFE_ICON, 0);
+    /* Spare lives along the bottom left, drawn as small copies of the ship
+       itself rather than a separate icon - one more thing the vector artwork
+       gets for nothing. The stage flags that used to sit bottom right were
+       sheet art and a fixed decoration wired to nothing, so they are gone
+       until they can be drawn as shapes and driven by the stage count. */
     for (int i = 0; i < g->player.lives - 1 && i < 5; ++i) {
-        gfx_blit(gfx, life, 2 + i * (life->w + 1), GAME_H - life->h - 1);
-    }
-
-    static const StageFlag hud_flags[] = { FLAG_50, FLAG_20, FLAG_10, FLAG_1 };
-    int fx_x = GAME_W - 2;
-    for (int i = 0; i < ARRAY_COUNT(hud_flags); ++i) {
-        const SDL_Rect *fl = atlas_frame(SPR_STAGE_FLAG, hud_flags[i]);
-        fx_x -= fl->w + 1;
-        gfx_blit(gfx, fl, fx_x, GAME_H - fl->h - 1);
+        Vec2 p = { 9.0f + i * 13.0f, (float)(GAME_H - 9) };
+        shape_draw(gfx, SHP_FIGHTER, p, HEADING_N, 0.72f);
     }
 
     if (g->game_over > 0) {

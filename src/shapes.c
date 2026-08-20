@@ -1,0 +1,202 @@
+/* The artwork.
+ *
+ * Every shape is drawn facing north on a grid running -8..+8, so it occupies
+ * the same 16x16 the sprite sheet cells did and the collision radii tuned
+ * against those cells still hold.
+ *
+ * Only the right half of each design is written out. The `mirror` flag on a
+ * polygon draws it again flipped across x = 0, which halves the typing and,
+ * more usefully, makes the symmetry exact rather than something to get right
+ * twice. Polygons are painted in the order listed, so the pieces that sit
+ * behind - wings, shells - come first.
+ *
+ * These are loosely after the arcade designs rather than traced from them:
+ * the fighter's swept wings and red tips, the bee's yellow body between blue
+ * wings, the butterfly's spread red wings, the boss's shell around a bright
+ * core. */
+
+#include "shape.h"
+
+/* ---------------------------------------------------------------- fighter */
+
+static const Vec2 FIGHTER_V[] = {
+    /* body      */ {  0.0f, -8.0f }, {  1.5f, -3.0f }, {  1.5f,  4.0f }, {  0.0f,  4.5f },
+    /* wing      */ {  1.5f,  1.0f }, {  7.5f,  4.0f }, {  7.5f,  6.0f }, {  1.5f,  4.5f },
+    /* wing tip  */ {  6.2f,  3.6f }, {  7.8f,  4.4f }, {  7.8f,  6.4f }, {  6.2f,  5.6f },
+    /* engine    */ {  0.5f,  4.5f }, {  1.7f,  4.5f }, {  1.5f,  7.2f }, {  0.7f,  7.2f },
+    /* cockpit   */ {  0.0f, -2.2f }, {  1.0f, -1.0f }, {  1.0f,  1.4f }, {  0.0f,  2.2f },
+};
+
+static const ShapePoly FIGHTER_P[] = {
+    {  4, 4, 0, true },   /* wing behind the hull */
+    {  0, 4, 0, true },   /* hull                 */
+    {  8, 4, 1, true },   /* red wing tip         */
+    { 12, 4, 1, true },   /* engine               */
+    { 16, 4, 2, true },   /* cockpit              */
+};
+
+static const ShapePalette FIGHTER_PAL = {{
+    { 232, 232, 255, 255 },   /* hull, white with a lavender cast */
+    { 255,  48,  48, 255 },   /* red trim                         */
+    {  72, 148, 255, 255 },   /* cockpit                          */
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+/* The fighter a Boss Galaga has taken: same ship, enemy colours. */
+const ShapePalette SHAPE_PAL_FIGHTER_CAPTURED = {{
+    { 255,  64,  64, 255 },
+    { 232, 232, 255, 255 },
+    { 255, 200,  64, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+/* -------------------------------------------------------------------- bee */
+
+static const Vec2 BEE_V[] = {
+    /* wing      */ {  1.5f, -2.5f }, {  7.8f,  1.0f }, {  7.2f,  4.2f }, {  1.5f,  1.0f },
+    /* antenna   */ {  0.6f, -7.5f }, {  1.8f, -5.5f }, {  0.9f, -4.6f },
+    /* head      */ {  0.0f, -5.2f }, {  2.2f, -3.6f }, {  2.2f, -1.0f }, {  0.0f, -0.6f },
+    /* thorax    */ {  0.0f, -1.0f }, {  2.4f, -0.6f }, {  2.4f,  3.0f }, {  0.0f,  3.4f },
+    /* band      */ {  0.0f,  0.4f }, {  2.4f,  0.2f }, {  2.4f,  1.9f }, {  0.0f,  2.1f },
+    /* abdomen   */ {  0.0f,  3.0f }, {  2.0f,  3.0f }, {  1.6f,  6.0f }, {  0.0f,  6.4f },
+};
+
+static const ShapePoly BEE_P[] = {
+    {  0, 4, 0, true },   /* blue wing, behind everything */
+    {  4, 3, 1, true },   /* antenna                      */
+    {  7, 4, 1, true },   /* head                         */
+    { 11, 4, 1, true },   /* thorax                       */
+    { 15, 4, 2, true },   /* red band                     */
+    { 19, 4, 0, true },   /* abdomen                      */
+};
+
+static const ShapePalette BEE_PAL = {{
+    {  40,  96, 240, 255 },   /* blue   */
+    { 255, 216,   0, 255 },   /* yellow */
+    { 255,  48,  48, 255 },   /* red    */
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+/* -------------------------------------------------------------- butterfly */
+
+static const Vec2 BUTTERFLY_V[] = {
+    /* upper wing */ {  1.6f, -4.5f }, {  8.0f, -6.5f }, {  7.4f, -1.2f }, {  1.8f, -0.2f },
+    /* lower wing */ {  1.8f,  0.2f }, {  7.6f,  0.8f }, {  6.6f,  5.8f }, {  1.8f,  3.6f },
+    /* body       */ {  0.0f, -6.0f }, {  1.8f, -4.5f }, {  1.8f,  4.0f }, {  0.0f,  5.0f },
+    /* band       */ {  0.0f, -1.4f }, {  1.8f, -1.4f }, {  1.8f,  1.8f }, {  0.0f,  1.8f },
+    /* head       */ {  0.0f, -6.0f }, {  1.2f, -5.2f }, {  1.2f, -3.4f }, {  0.0f, -3.4f },
+};
+
+static const ShapePoly BUTTERFLY_P[] = {
+    {  0, 4, 0, true },
+    {  4, 4, 0, true },
+    {  8, 4, 1, true },
+    { 12, 4, 2, true },
+    { 16, 4, 2, true },
+};
+
+static const ShapePalette BUTTERFLY_PAL = {{
+    { 240,  40,  40, 255 },   /* red wings */
+    { 240, 240, 255, 255 },   /* white body */
+    {  72, 148, 255, 255 },   /* blue core  */
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+/* ------------------------------------------------------------------- boss */
+
+static const Vec2 BOSS_V[] = {
+    /* horn        */ {  1.8f, -8.0f }, {  3.4f, -6.8f }, {  2.8f, -4.6f }, {  1.6f, -5.6f },
+    /* dome        */ {  0.0f, -6.0f }, {  3.2f, -5.0f }, {  4.4f, -1.8f }, {  0.0f, -1.4f },
+    /* upper claw  */ {  4.0f, -3.0f }, {  7.8f, -1.4f }, {  7.4f,  1.0f }, {  4.2f, -0.4f },
+    /* lower claw  */ {  5.2f,  0.6f }, {  7.6f,  1.4f }, {  6.2f,  5.0f }, {  4.4f,  3.6f },
+    /* lower shell */ {  0.0f,  1.0f }, {  3.4f,  1.6f }, {  2.8f,  5.4f }, {  0.0f,  6.0f },
+    /* core        */ {  0.0f, -3.6f }, {  2.8f, -2.6f }, {  2.8f,  1.6f }, {  0.0f,  2.4f },
+    /* foot        */ {  0.8f,  3.4f }, {  2.4f,  3.0f }, {  2.2f,  6.6f }, {  1.0f,  6.8f },
+};
+
+static const ShapePoly BOSS_P[] = {
+    {  0, 4, 2, true },   /* horn                                   */
+    {  4, 4, 0, true },   /* dome                                   */
+    {  8, 4, 0, true },   /* claws, held clear of the shell so they */
+    { 12, 4, 0, true },   /* read separately at a small size        */
+    { 16, 4, 0, true },   /* lower shell                            */
+    { 20, 4, 1, true },   /* core                                   */
+    { 24, 4, 2, true },   /* foot                                   */
+};
+
+static const ShapePalette BOSS_PAL = {{
+    {   0, 168, 176, 255 },   /* teal shell */
+    { 255, 232,   0, 255 },   /* core       */
+    { 240, 100,   0, 255 },   /* orange     */
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+/* A boss that has already taken one hit. Same shell, different colours - on
+   the sprite sheet this needed a second full set of frames. */
+const ShapePalette SHAPE_PAL_BOSS_HIT = {{
+    {  96,  96, 240, 255 },
+    { 255, 128, 255, 255 },
+    { 176,  48, 224, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+/* ------------------------------------------------------------------ shots */
+
+static const Vec2 PLAYER_SHOT_V[] = {
+    /* outer */ {  0.0f, -6.0f }, {  1.6f, -1.5f }, {  1.6f,  2.5f }, {  0.0f,  4.5f },
+    /* inner */ {  0.0f, -4.5f }, {  0.8f, -1.0f }, {  0.8f,  1.8f }, {  0.0f,  3.0f },
+};
+
+static const ShapePoly PLAYER_SHOT_P[] = {
+    { 0, 4, 1, true },   /* cyan body      */
+    { 4, 4, 0, true },   /* white hot core */
+};
+
+static const ShapePalette PLAYER_SHOT_PAL = {{
+    { 255, 255, 255, 255 },
+    { 120, 220, 255, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+static const Vec2 ENEMY_SHOT_V[] = {
+    /* head */ {  0.0f, -4.2f }, {  2.0f, -1.0f }, {  0.0f,  1.8f },
+    /* spot */ {  0.0f, -2.4f }, {  0.9f, -0.8f }, {  0.0f,  0.6f },
+    /* tail */ {  0.0f,  1.2f }, {  1.2f,  2.0f }, {  0.8f,  5.0f }, {  0.0f,  5.2f },
+};
+
+static const ShapePoly ENEMY_SHOT_P[] = {
+    { 6, 4, 1, true },   /* red tail behind the head */
+    { 0, 3, 0, true },
+    { 3, 3, 2, true },
+};
+
+static const ShapePalette ENEMY_SHOT_PAL = {{
+    {  80, 150, 255, 255 },
+    { 255,  60,  60, 255 },
+    { 240, 240, 255, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+/* ------------------------------------------------------------------ table */
+
+static const Shape SHAPES[SHP_COUNT] = {
+    { "FIGHTER",     FIGHTER_V,     FIGHTER_P,     (int)ARRAY_COUNT(FIGHTER_P),     &FIGHTER_PAL     },
+    { "BEE",         BEE_V,         BEE_P,         (int)ARRAY_COUNT(BEE_P),         &BEE_PAL         },
+    { "BUTTERFLY",   BUTTERFLY_V,   BUTTERFLY_P,   (int)ARRAY_COUNT(BUTTERFLY_P),   &BUTTERFLY_PAL   },
+    { "BOSS",        BOSS_V,        BOSS_P,        (int)ARRAY_COUNT(BOSS_P),        &BOSS_PAL        },
+    { "PLAYER SHOT", PLAYER_SHOT_V, PLAYER_SHOT_P, (int)ARRAY_COUNT(PLAYER_SHOT_P), &PLAYER_SHOT_PAL },
+    { "ENEMY SHOT",  ENEMY_SHOT_V,  ENEMY_SHOT_P,  (int)ARRAY_COUNT(ENEMY_SHOT_P),  &ENEMY_SHOT_PAL  },
+};
+
+const Shape *shape_get(ShapeId id)
+{
+    if (id < 0 || id >= SHP_COUNT) return NULL;
+    return &SHAPES[id];
+}
+
+const char *shape_name(ShapeId id)
+{
+    const Shape *s = shape_get(id);
+    return s ? s->name : "?";
+}
