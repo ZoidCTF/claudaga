@@ -30,6 +30,7 @@
 static const SDL_Color YELLOW = { 255, 216,   0, 255 };
 static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color DIM    = { 144, 144, 160, 255 };
+static const SDL_Color PALE   = { 230, 230, 240, 255 };
 
 /* The title is where the game opens; the tools sit behind play on Tab. */
 typedef enum { VIEW_TITLE, VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_COUNT } View;
@@ -127,13 +128,27 @@ static void options_draw(Gfx *g)
     }
     font_draw(g, (GAME_W - font_width(buf)) / 2, 108, pads > 0 ? CYAN : DIM, buf);
 
-    const char *k1 = "PAD   STICK OR DPAD TO FLY   A TO FIRE";
-    const char *k2 = "KEYS  ARROWS TO FLY   SPACE TO FIRE";
-    font_draw(g, (GAME_W - font_width(k1)) / 2, 128, DIM, k1);
-    font_draw(g, (GAME_W - font_width(k2)) / 2, 140, DIM, k2);
+    /* The controls as three columns rather than two centred sentences. The
+       sentences were 38 characters, and 38 characters at a six pixel advance
+       is 228 - four pixels wider than the screen, so both ends were clipped.
+       Columns keep every string short enough that no arrangement of them can
+       run off the edge, and they line up, which a pair of separately centred
+       lines never does. */
+    const int COL_WHO = 30, COL_FLY = 72, COL_FIRE = 166;
 
-    const char *a = "VOLUME SETTINGS WILL LIVE HERE";
-    font_draw(g, (GAME_W - font_width(a)) / 2, 160, DIM, a);
+    font_draw(g, COL_FLY,  126, DIM, "FLY");
+    font_draw(g, COL_FIRE, 126, DIM, "FIRE");
+
+    font_draw(g, COL_WHO,  140, CYAN, "PAD");
+    font_draw(g, COL_FLY,  140, PALE, "STICK OR DPAD");
+    font_draw(g, COL_FIRE, 140, PALE, "A");
+
+    font_draw(g, COL_WHO,  152, CYAN, "KEYS");
+    font_draw(g, COL_FLY,  152, PALE, "ARROWS");
+    font_draw(g, COL_FIRE, 152, PALE, "SPACE");
+
+    const char *a = "VOLUME SETTINGS TO COME";
+    font_draw(g, (GAME_W - font_width(a)) / 2, 176, DIM, a);
 
     const char *back = "ESC BACK";
     font_draw(g, (GAME_W - font_width(back)) / 2, GAME_H - 40, CYAN, back);
@@ -256,7 +271,7 @@ static void usage(void)
             "                [--subject N] [--scale N]\n"
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
-            "                [--stage N] [--mute] [--padtest]\n"
+            "                [--stage N] [--mute] [--padtest] [--options]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -331,6 +346,7 @@ int main(int argc, char **argv)
     int         first_stage = 1;
     bool        mute      = false;
     bool        padtest   = false;
+    bool        show_options = false;
     bool        autofire  = false;
     bool        trace     = false;
 
@@ -351,6 +367,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--trace"))                    trace = true;
         else if (!strcmp(argv[i], "--mute"))                     mute = true;
         else if (!strcmp(argv[i], "--padtest"))                  padtest = true;
+        else if (!strcmp(argv[i], "--options")) { show_options = true; view_set = true; }
         else { usage(); return 1; }
     }
     if (scale < 1) scale = 1;
@@ -358,6 +375,12 @@ int main(int argc, char **argv)
     /* Fast-forwarding or measuring means the game, not the title: there is
        nothing to advance on a menu, and every capture would otherwise come
        back as a picture of the title screen. */
+    /* The options page is an overlay rather than a view, so it needs its own
+       flag to be screenshot. It had none, which is exactly why a line four
+       pixels too wide for the screen shipped: nothing ever drew it except a
+       person clicking through the menu. */
+    if (show_options) { ui.view = VIEW_TITLE; ui.options = true; }
+
     if (!view_set && (warmup > 0 || stats > 0)) ui.view = VIEW_PLAY;
     if (ui.subject < 0 || ui.subject >= ARRAY_COUNT(POSE_SUBJECTS)) ui.subject = 0;
 

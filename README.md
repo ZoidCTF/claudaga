@@ -83,7 +83,8 @@ one frame and exits, `--stats N` runs the wave headless for N ticks and reports
 what the stage's difficulty works out to and how the wave behaved under it,
 `--stage N` starts on a later stage so that difficulty can be measured without
 playing up to it, `--mute` opens no audio device, `--padtest` runs the
-controller self test and exits, and `--trace` logs each stage handover.
+controller self test and exits, `--options` opens on the options page so it can
+be screenshot, and `--trace` logs each stage handover.
 `--shot` and `--stats` mute themselves.
 
 `--trace` reports each stage handover: what was still in the air when the stage
@@ -622,6 +623,24 @@ warm-up and the interactive loop through one `play_tick`.
 Fire is any of the four face buttons or the right trigger. Which button is *the*
 button is a matter of what somebody grew up holding, and none of the four is
 needed for anything else in flight.
+
+### The options page, and a screen nobody looked at
+
+The controls summary shipped four pixels too wide. Two centred lines, the longer
+of them 38 characters, and 38 characters at a six pixel advance is 228 against a
+224 pixel screen — so `(GAME_W - font_width(s)) / 2` went negative and both ends
+were clipped.
+
+It shipped because there was no way to draw it except by clicking through the
+menu, and every other screen in the project has a flag that renders it. `--options`
+is that flag now, and the layout is three columns rather than two sentences, so
+no arrangement of the strings can run off the edge and the two rows line up —
+which separately centred lines never do. Measured after the change, the block
+spans x=29.3 to x=194.0 with margins of 29.3 and 30.0.
+
+The rest of the text screens were swept for the same fault at the same time —
+title, options, results, play and a bonus round — and all sit clear of both
+edges.
 
 ### Testing it without hands
 
