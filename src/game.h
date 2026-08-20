@@ -1,5 +1,5 @@
-#ifndef GALAGA_GAME_H
-#define GALAGA_GAME_H
+#ifndef CLAUDAGA_GAME_H
+#define CLAUDAGA_GAME_H
 
 #include "gfx.h"
 #include "formation.h"
@@ -56,4 +56,4 @@ void game_restart(Game *g);           /* back to stage 1 with a full crew */
 void game_update(Game *g, const Uint8 *keys);
 void game_draw(Gfx *gfx, const Game *g);
 
-#endif /* GALAGA_GAME_H */
+#endif /* CLAUDAGA_GAME_H */

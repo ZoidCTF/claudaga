@@ -1,5 +1,5 @@
-#ifndef GALAGA_GFX_H
-#define GALAGA_GFX_H
+#ifndef CLAUDAGA_GFX_H
+#define CLAUDAGA_GFX_H
 
 #include <SDL.h>
 #include "common.h"
@@ -46,4 +46,4 @@ bool gfx_screenshot(Gfx *g, const char *path);
 void gfx_begin_frame(Gfx *g);
 void gfx_end_frame(Gfx *g);
 
-#endif /* GALAGA_GFX_H */
+#endif /* CLAUDAGA_GFX_H */

@@ -1,5 +1,5 @@
-#ifndef GALAGA_DEBUGFONT_H
-#define GALAGA_DEBUGFONT_H
+#ifndef CLAUDAGA_DEBUGFONT_H
+#define CLAUDAGA_DEBUGFONT_H
 
 #include "gfx.h"
 
@@ -13,4 +13,4 @@
 void font_draw(Gfx *g, int x, int y, SDL_Color c, const char *text);
 int  font_width(const char *text);   /* pixel width, excluding trailing gap */
 
-#endif /* GALAGA_DEBUGFONT_H */
+#endif /* CLAUDAGA_DEBUGFONT_H */

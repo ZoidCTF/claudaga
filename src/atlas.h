@@ -1,5 +1,5 @@
-#ifndef GALAGA_ATLAS_H
-#define GALAGA_ATLAS_H
+#ifndef CLAUDAGA_ATLAS_H
+#define CLAUDAGA_ATLAS_H
 
 #include <SDL.h>
 #include "common.h"
@@ -111,4 +111,4 @@ int atlas_idle_frame(SpriteId id, int phase);
    the eight headings the sheet provides. */
 MissileDir atlas_missile_dir(float vx, float vy);
 
-#endif /* GALAGA_ATLAS_H */
+#endif /* CLAUDAGA_ATLAS_H */

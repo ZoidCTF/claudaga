@@ -1,5 +1,5 @@
-#ifndef GALAGA_PATH_H
-#define GALAGA_PATH_H
+#ifndef CLAUDAGA_PATH_H
+#define CLAUDAGA_PATH_H
 
 #include "common.h"
 
@@ -50,4 +50,4 @@ float heading_from_vec(float dx, float dy);
    ease a heading round without spinning the long way. */
 float heading_delta(float from, float to);
 
-#endif /* GALAGA_PATH_H */
+#endif /* CLAUDAGA_PATH_H */

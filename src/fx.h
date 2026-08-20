@@ -1,5 +1,5 @@
-#ifndef GALAGA_FX_H
-#define GALAGA_FX_H
+#ifndef CLAUDAGA_FX_H
+#define CLAUDAGA_FX_H
 
 #include "gfx.h"
 #include "atlas.h"
@@ -42,4 +42,4 @@ void fx_draw(Gfx *g, const Fx *fx);
    respawn back until the death has finished being shown. */
 bool fx_player_blast_active(const Fx *fx);
 
-#endif /* GALAGA_FX_H */
+#endif /* CLAUDAGA_FX_H */

@@ -1,5 +1,5 @@
-#ifndef GALAGA_FORMATION_H
-#define GALAGA_FORMATION_H
+#ifndef CLAUDAGA_FORMATION_H
+#define CLAUDAGA_FORMATION_H
 
 #include "gfx.h"
 #include "atlas.h"
@@ -166,4 +166,4 @@ bool wave_hit(Wave *w, int index, int *score, int *popup);
 /* Where a formation slot sits on screen. */
 Vec2 formation_slot_pos(int slot);
 
-#endif /* GALAGA_FORMATION_H */
+#endif /* CLAUDAGA_FORMATION_H */

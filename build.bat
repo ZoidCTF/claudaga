@@ -39,7 +39,7 @@ rem build can report a warning count. Warnings scroll past too easily otherwise,
 rem and a build that says only "OK" reads as clean when it is not. Redirecting
 rem rather than piping keeps cl's exit code intact.
 set "LOG=%ROOT%build\build.log"
-cl !CFLAGS! /Fo"%ROOT%build\\" /Fd"%ROOT%build\galaga.pdb" "%ROOT%src\*.c" /link /DEBUG /SUBSYSTEM:!SUBSYS! /OUT:"%ROOT%build\galaga.exe" !LIBS! > "%LOG%" 2>&1
+cl !CFLAGS! /Fo"%ROOT%build\\" /Fd"%ROOT%build\claudaga.pdb" "%ROOT%src\*.c" /link /DEBUG /SUBSYSTEM:!SUBSYS! /OUT:"%ROOT%build\claudaga.exe" !LIBS! > "%LOG%" 2>&1
 set CLERR=%errorlevel%
 type "%LOG%"
 
@@ -58,9 +58,9 @@ rem Stage the runtime DLL next to the exe.
 if not exist "%ROOT%build\SDL2.dll" copy /y "%SDL%\lib\x64\SDL2.dll" "%ROOT%build\" >nul
 
 if not "%WARNS%"=="0" (
-    echo [build] OK with %WARNS% warning^(s^) -^> build\galaga.exe
+    echo [build] OK with %WARNS% warning^(s^) -^> build\claudaga.exe
 ) else (
-    echo [build] OK -^> build\galaga.exe
+    echo [build] OK -^> build\claudaga.exe
 )
 exit /b 0
 

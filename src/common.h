@@ -1,5 +1,5 @@
-#ifndef GALAGA_COMMON_H
-#define GALAGA_COMMON_H
+#ifndef CLAUDAGA_COMMON_H
+#define CLAUDAGA_COMMON_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -34,4 +34,4 @@ typedef struct { float x, y; } Vec2;
 
 #define ARRAY_COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
-#endif /* GALAGA_COMMON_H */
+#endif /* CLAUDAGA_COMMON_H */

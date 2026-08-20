@@ -1,4 +1,4 @@
-# Galaga
+# Claudaga
 
 A Galaga clone in C99 on SDL2, built with MSVC. The sprite sheet is loaded and
 fully indexed, the rotation system is in and verified, the attack wave flies its
@@ -12,7 +12,7 @@ The repository does not carry its dependencies, so fetch them once after
 cloning:
 
 ```bash
-toolsetch_deps.bat
+tools\fetch_deps.bat
 ```
 
 That pulls SDL2 2.32.10 and stb_image.h into `third_party/`. Both versions are
@@ -38,7 +38,7 @@ not.
 Run it from the project root, since the sheet is loaded by relative path:
 
 ```bash
-build\galaga.exe
+build\claudaga.exe
 ```
 
 `Tab` cycles the three views.

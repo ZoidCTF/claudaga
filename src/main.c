@@ -1,4 +1,4 @@
-/* Galaga.
+/* Claudaga.
  *
  * Three views: the sprite browser pages through every group on the sheet with
  * its frames animating, the pose check verifies the rotation mapping, and the
@@ -150,7 +150,7 @@ static void pose_draw(Gfx *g, int subject)
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: galaga [--scene] [--pose] [--page N] [--subject N]\n"
+            "usage: claudaga [--scene] [--pose] [--page N] [--subject N]\n"
             "              [--scale N] [--at TICK] [--paths] [--observe]\n"
             "              [--autofire] [--trace] [--shot out.bmp] [--stats N]\n");
 }
@@ -188,7 +188,7 @@ int main(int argc, char **argv)
     if (subject < 0 || subject >= ARRAY_COUNT(POSE_SUBJECTS)) subject = 0;
 
     Gfx g;
-    if (!gfx_init(&g, "Galaga", scale)) return 1;
+    if (!gfx_init(&g, "Claudaga", scale)) return 1;
 
     atlas_init();
 
