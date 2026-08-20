@@ -350,30 +350,27 @@ int wave_captive_holder(const Wave *w)
     return w->captive_holder;
 }
 
-/* Where a captured fighter rides relative to its captor.
+/* Where a captured fighter rides relative to its captor: directly above it, in
+ * screen space, always - parked, entering, or diving.
  *
- * Parked, it sits directly above the boss - which is where the arcade puts it,
- * and it is not only decoration: from the fighter's row a shot travelling
- * straight up reaches the captive before the boss, so a boss holding a fighter
- * in formation is genuinely shielded by it. That is the whole tension of a
- * rescue, and it is why the offset cannot simply be "above" everywhere.
+ * Screen-space rather than rotated with the boss, which is what makes it read
+ * as "above" and not "behind the nose". A boss diving is travelling down the
+ * screen, so above is behind it, and the pair descends as a vertical column
+ * with the stolen fighter trailing - which is what the arcade does.
  *
- * Attacking, the pair comes down side by side instead, on the boss's own
- * lateral axis so the formation is carried round the turns rather than being a
- * screen-space offset that stops making sense the moment the path bends. That
- * is what opens the shot: the boss is only exposed while it is diving, so a
- * rescue has to be taken during an attack. */
+ * This offset also decides who can be shot. Screen y grows downward, so a shot
+ * climbing from the fighter's row meets the larger y first: the boss is between
+ * the player and the captive the whole way, and a straight shot up the column
+ * frees the fighter rather than destroying it. Losing it is what happens when
+ * the two are not lined up with you - which is most of the time, since they are
+ * moving. An earlier version had this backwards and pushed the captive out to
+ * the side while diving to "open the shot"; the shot was never closed. */
 #define CAPTIVE_ABOVE 15.0f
-#define CAPTIVE_BESIDE 15.0f
 
 static Vec2 captive_offset(const Enemy *e)
 {
+    (void)e;
     Vec2 o = { 0.0f, -CAPTIVE_ABOVE };
-    if (e->state == ENEMY_DIVING) {
-        float rad = e->heading * (float)M_PI / 180.0f;
-        o.x = cosf(rad) * CAPTIVE_BESIDE;   /* the boss's right-hand side */
-        o.y = sinf(rad) * CAPTIVE_BESIDE;
-    }
     return o;
 }
 

@@ -369,12 +369,16 @@ static void collide_shots(Game *g)
         Shot *sh = &g->shots[i];
         if (!sh->alive) continue;
 
-        /* The captured fighter is checked before its captor, because it is
-           the one in front. Parked, it sits directly above the boss and a shot
-           going straight up reaches it first; destroying it costs the fighter
-           for good and pays nothing, which is the point - it is your own ship,
-           and the only way to get it back is to shoot the thing carrying it
-           without shooting it. */
+        /* The captured fighter is a target in its own right. Destroying it
+           costs the fighter for good and pays nothing, because it is your own
+           ship.
+
+           It rides above its captor and the two never overlap - fifteen pixels
+           apart against a seven pixel hit radius - so a shot can only ever be
+           in range of one of them, and testing this first costs nothing and
+           decides nothing. The boss is the one nearer the player, so a shot
+           straight up the column reaches the boss and frees the fighter; the
+           captive is what you hit when the pair is not lined up with you. */
         if (wave_captive_hit(&g->wave, sh->pos)) {
             sh->alive = false;
             ++g->shots_hit;

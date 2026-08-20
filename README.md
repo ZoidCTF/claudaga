@@ -419,20 +419,28 @@ frame.
 
 ### Where the captive rides, and why it is a target
 
-Parked, the captured fighter sits **directly above** its captor, which is where
-the arcade puts it and is not decoration. From the fighter's row a shot going
-straight up reaches the captive before the boss, so a boss holding a fighter in
-formation is genuinely shielded by it. The captive is a target in its own right
-and is checked *before* its captor: hit it and it is gone for good, and it pays
-nothing, because it is your own ship.
+The captured fighter sits **directly above** its captor in screen space, always
+— parked, entering, or attacking. Screen space rather than rotated with the boss
+is what makes it read as *above* and not as *behind the nose*: a diving boss is
+travelling down the screen, so above is behind, and the pair descends as a
+vertical column with the stolen fighter trailing. That is what the arcade does.
 
-That would make a rescue impossible if the offset were "above" everywhere, so it
-is not. Attacking, the pair comes down side by side, on the boss's own lateral
-axis so the pairing is carried round the turns rather than being a screen-space
-offset that stops making sense the moment the path bends. That is what opens the
-shot: the boss is only exposed while it is diving, so a rescue has to be taken
-during an attack, and the shot that frees your fighter and the shot that destroys
-it are a few pixels apart.
+The captive is a target in its own right. Hit it and it is gone for good, and it
+pays nothing, because it is your own ship.
+
+Which of the two a shot can reach falls out of the offset, and it is worth being
+explicit about the direction because getting it backwards is easy. Screen y grows
+downward: the fighter's row is at y=264 and the formation is at y=44, and a shot
+climbs by *decreasing* y. So a rising shot meets the larger y first, which is the
+boss. The boss is between the player and the captive the whole way, and a straight
+shot up the column frees the fighter rather than destroying it. Losing the captive
+is what happens when the pair is not lined up with you — which is most of the
+time, since they are moving.
+
+An earlier version of this had the reasoning inverted and pushed the captive out
+to the boss's side while diving, to "open a shot" that was never closed. The
+symptom was visible before the argument was: the pair flew side by side instead
+of in column.
 
 ### The reunion is played out, not fitted in
 
