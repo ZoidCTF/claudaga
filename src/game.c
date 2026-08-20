@@ -33,6 +33,10 @@ static const SDL_Color DIM    = { 150, 150, 168, 255 };
    Long enough to read four lines without hurrying; fire cuts it short. */
 #define RESULTS_TICKS 420
 
+/* How fast the surviving fighter walks to the middle during a reunion. Slower
+   than steering, so it reads as the game taking over rather than as input. */
+#define RESCUE_CENTRE_SPEED 1.4f
+
 /* How long the extra-fighter notice stays up. */
 #define EXTRA_MSG_TICKS 120
 
@@ -290,6 +294,7 @@ static void start_capture(Game *g, int boss)
 
     g->player.captured = true;
     g->player.alive    = false;
+    g->gone_tick       = g->tick;
     g->player.cap_pos  = player_pos(g);
     g->player.cap_spin = 0.0f;
     g->player.cap_boss = boss;
@@ -310,6 +315,7 @@ static void kill_player(Game *g)
     if (!g->player.alive || g->invulnerable) return;
     g->player.alive   = false;
     g->player.respawn = RESPAWN_TICKS;
+    g->gone_tick      = g->tick;
     fx_blast_player(&g->fx, player_pos(g));
     audio_play(SFX_PLAYER_DIE);
 
@@ -363,6 +369,24 @@ static void collide_shots(Game *g)
         Shot *sh = &g->shots[i];
         if (!sh->alive) continue;
 
+        /* The captured fighter is checked before its captor, because it is
+           the one in front. Parked, it sits directly above the boss and a shot
+           going straight up reaches it first; destroying it costs the fighter
+           for good and pays nothing, which is the point - it is your own ship,
+           and the only way to get it back is to shoot the thing carrying it
+           without shooting it. */
+        if (wave_captive_hit(&g->wave, sh->pos)) {
+            sh->alive = false;
+            ++g->shots_hit;
+            fx_blast_enemy(&g->fx, sh->pos);
+            audio_play(SFX_ENEMY_DIE);
+            if (g->trace) {
+                printf("tick %d: captured fighter shot down - it is gone\n",
+                       g->tick);
+            }
+            continue;
+        }
+
         for (int e = 0; e < MAX_ENEMIES; ++e) {
             const Enemy *en = &g->wave.enemies[e];
             if (en->state == ENEMY_DEAD || en->state == ENEMY_WAITING) continue;
@@ -387,6 +411,15 @@ static void collide_shots(Game *g)
                     && !g->player.dual) {
                     g->rescue_active = true;
                     g->rescue_pos    = at;
+
+                    /* The arcade plays the reunion out rather than letting it
+                       happen in traffic: the board is sent home, no new attack
+                       launches, and the fighter is walked to the middle to meet
+                       the one coming down. Steering during it would let the
+                       player pull away from the very thing flying to meet
+                       them. Control comes back when they dock. */
+                    wave_recall(&g->wave);
+
                     if (g->trace) printf("tick %d: captor destroyed, fighter freed\n",
                                          g->tick);
                 }
@@ -584,8 +617,10 @@ void game_update(Game *g, const Uint8 *keys)
         return;
     }
 
-    /* No new attacks while there is nobody to attack. */
-    wave_pause_attacks(&g->wave, !g->player.alive);
+    /* No new attacks while there is nobody to attack, and none through the
+       reunion either - the player cannot steer during it, so anything launched
+       would be shooting at a target that has been taken away from them. */
+    wave_pause_attacks(&g->wave, !g->player.alive || g->rescue_active);
 
     wave_update(&g->wave, g->player.x);
 
@@ -608,10 +643,20 @@ void game_update(Game *g, const Uint8 *keys)
             g->player.cap_pos.y += dy / d * CAPTURE_LIFT;
         }
     } else if (g->player.alive) {
-        steer_player(g, keys);
+        if (g->rescue_active) {
+            /* Slid to the middle rather than snapped: the rescued fighter is
+               flying down to a fixed point, and a ship that jumped there would
+               make the two arrive by different rules. */
+            float dx = GAME_W / 2.0f - g->player.x;
+            if (dx > RESCUE_CENTRE_SPEED)       g->player.x += RESCUE_CENTRE_SPEED;
+            else if (dx < -RESCUE_CENTRE_SPEED) g->player.x -= RESCUE_CENTRE_SPEED;
+            else                                g->player.x  = GAME_W / 2.0f;
+        } else {
+            steer_player(g, keys);
 
-        if (g->fire_cooldown > 0) --g->fire_cooldown;
-        if (keys[SDL_SCANCODE_SPACE] && g->fire_cooldown == 0) fire(g);
+            if (g->fire_cooldown > 0) --g->fire_cooldown;
+            if (keys[SDL_SCANCODE_SPACE] && g->fire_cooldown == 0) fire(g);
+        }
     } else {
         /* Respawn once the countdown has run out, the explosion has finished
            playing, and the spot is actually clear. The first keeps a fresh ship
@@ -624,19 +669,33 @@ void game_update(Game *g, const Uint8 *keys)
             && wave_area_clear(&g->wave, spot, SPAWN_CLEAR_RADIUS)) {
             g->player.alive = true;
             g->player.x     = spot.x;
+            if (g->trace) {
+                printf("tick %d: fighter back on the line, %d ticks after it went\n",
+                       g->tick, g->tick - g->gone_tick);
+            }
         }
     }
 
     if (g->rescue_active) {
-        /* Flies down to the fighter's row and docks. If there is no ship there
-           yet it simply keeps station until one comes back. */
-        float tx = g->player.x, ty = (float)PLAYER_Y;
+        /* Flies down to the middle of the fighter's row - a fixed point rather
+           than wherever the player happens to be, since the player is being
+           walked to that same spot. If there is no ship there yet, because the
+           capture cost the last one, it keeps station until one comes back. */
+        float tx = GAME_W / 2.0f, ty = (float)PLAYER_Y;
         float dx = tx - g->rescue_pos.x, dy = ty - g->rescue_pos.y;
         float d  = sqrtf(dx * dx + dy * dy);
+
         if (d <= RESCUE_SPEED) {
-            if (g->player.alive) {
+            g->rescue_pos.x = tx;
+            g->rescue_pos.y = ty;
+
+            /* Both halves have to be in place. The rescued fighter arrives
+               first as often as not, and docking with a ship still sliding
+               across would snap it the rest of the way. */
+            if (g->player.alive && g->player.x == tx) {
                 g->player.dual   = true;
                 g->rescue_active = false;
+                audio_play(SFX_EXTRA);
                 if (g->trace) printf("tick %d: dual fighter docked\n", g->tick);
             }
         } else {

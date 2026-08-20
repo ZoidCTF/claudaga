@@ -350,14 +350,59 @@ int wave_captive_holder(const Wave *w)
     return w->captive_holder;
 }
 
+/* Where a captured fighter rides relative to its captor.
+ *
+ * Parked, it sits directly above the boss - which is where the arcade puts it,
+ * and it is not only decoration: from the fighter's row a shot travelling
+ * straight up reaches the captive before the boss, so a boss holding a fighter
+ * in formation is genuinely shielded by it. That is the whole tension of a
+ * rescue, and it is why the offset cannot simply be "above" everywhere.
+ *
+ * Attacking, the pair comes down side by side instead, on the boss's own
+ * lateral axis so the formation is carried round the turns rather than being a
+ * screen-space offset that stops making sense the moment the path bends. That
+ * is what opens the shot: the boss is only exposed while it is diving, so a
+ * rescue has to be taken during an attack. */
+#define CAPTIVE_ABOVE 15.0f
+#define CAPTIVE_BESIDE 15.0f
+
+static Vec2 captive_offset(const Enemy *e)
+{
+    Vec2 o = { 0.0f, -CAPTIVE_ABOVE };
+    if (e->state == ENEMY_DIVING) {
+        float rad = e->heading * (float)M_PI / 180.0f;
+        o.x = cosf(rad) * CAPTIVE_BESIDE;   /* the boss's right-hand side */
+        o.y = sinf(rad) * CAPTIVE_BESIDE;
+    }
+    return o;
+}
+
 Vec2 wave_captive_pos(const Wave *w)
 {
     Vec2 v = { GAME_W * 0.5f, FORM_Y };
     int h = w->captive_holder;
     if (h < 0 || h >= MAX_ENEMIES) return v;
-    v = w->enemies[h].pos;
-    v.y += 15.0f;    /* it rides underneath */
+
+    const Enemy *e = &w->enemies[h];
+    Vec2 o = captive_offset(e);
+    v.x = e->pos.x + o.x;
+    v.y = e->pos.y + o.y;
     return v;
+}
+
+bool wave_captive_hit(Wave *w, Vec2 at)
+{
+    int h = w->captive_holder;
+    if (h < 0 || h >= MAX_ENEMIES) return false;
+    if (!w->enemies[h].has_captive) return false;
+
+    Vec2 c = wave_captive_pos(w);
+    float dx = at.x - c.x, dy = at.y - c.y;
+    if (dx * dx + dy * dy > ENEMY_HIT_RADIUS * ENEMY_HIT_RADIUS) return false;
+
+    w->enemies[h].has_captive = false;
+    w->captive_holder = -1;
+    return true;
 }
 
 /* ------------------------------------------------------------------- rng */
@@ -643,10 +688,12 @@ int wave_challenge_hits(const Wave *w)
    it turns gradually across the whole approach rather than pivoting on the
    spot. Both tangents are scaled by the gap being crossed - Hermite tangents
    are magnitudes as well as directions, and short hops need shallow curves. */
-static void begin_join(Enemy *e, const Path *p)
+/* The curve from wherever an enemy is, flying whatever way it is facing, into
+   its formation slot. Split out from begin_join below because two quite
+   different things need it: an enemy reaching the end of an entry path, and a
+   Boss Galaga that has just shut its tractor beam and wants to go home. */
+static void begin_join_at(Enemy *e, Vec2 end, float exit)
 {
-    Vec2 end     = path_point(p, p->length);
-    float exit   = path_heading(p, p->length);
     float rad    = exit * (float)M_PI / 180.0f;
     Vec2 target  = formation_slot_pos(e->slot);
 
@@ -977,6 +1024,13 @@ static void enemy_fire(Wave *w, const Enemy *e, float player_x)
    the same path put them exactly on top of one another the whole way back. A
    departure slot spaces them out, and does it for any two enemies that happen
    to coincide. Waiting happens off-screen, where nothing is drawn. */
+/* An enemy that has run out of entry path joins from where the path ended,
+   still flying the way the path was going. */
+static void begin_join(Enemy *e, const Path *p)
+{
+    begin_join_at(e, path_point(p, p->length), path_heading(p, p->length));
+}
+
 static void send_home(Wave *w, Enemy *e)
 {
     if (e->dive_path >= 0) {
@@ -1003,9 +1057,20 @@ void wave_recall(Wave *w)
         Enemy *e = &w->enemies[i];
         if (e->state == ENEMY_DIVING) send_home(w, e);
 
-        /* A boss mid-capture shuts up shop and leaves too, but keeps anything
-           it has already taken - the captive belongs to it now. */
-        if (e->state == ENEMY_BEAMING) send_home(w, e);
+        /* A boss mid-capture shuts up shop too, but keeps anything it has
+           already taken - the captive belongs to it now. It climbs back to its
+           slot from where it hangs rather than going round by the return lane,
+           for the same reason a beam that ends normally does: it never left the
+           top half of the screen, and sending it round makes it disappear and
+           come back in the corner. */
+        if (e->state == ENEMY_BEAMING) {
+            if (e->dive_path >= 0) {
+                dive_path_release(w, e->dive_path);
+                e->dive_path = -1;
+            }
+            e->speed = ENTRY_SPEED;
+            begin_join_at(e, e->pos, e->heading);
+        }
     }
     wave_clear_shots(w);
 }
@@ -1150,7 +1215,26 @@ void wave_update(Wave *w, float player_x)
                 e->heading = HEADING_S;
             }
 
-            if (e->beam_t >= BEAM_TOTAL) send_home(w, e);
+            /* Beam shut: climb back to the slot from where it is hovering,
+               rather than going round by the return lane the way a diver does.
+               A diver ends its run off the bottom of the screen and genuinely
+               has to come back in over the top; a boss that has been hanging
+               below the formation the whole time has not gone anywhere, and
+               sending it round made it vanish and reappear in the corner -
+               with the captured fighter along with it.
+
+               It leaves on the heading it is already flying, which is south.
+               The join curve therefore swings it down and around before it
+               climbs, so it turns rather than flipping about-face on one
+               frame. */
+            if (e->beam_t >= BEAM_TOTAL) {
+                if (e->dive_path >= 0) {
+                    dive_path_release(w, e->dive_path);
+                    e->dive_path = -1;
+                }
+                e->speed = ENTRY_SPEED;
+                begin_join_at(e, e->pos, e->heading);
+            }
             break;
         }
 
@@ -1445,9 +1529,11 @@ void wave_draw(Gfx *g, const Wave *w)
 
         shape_draw_pal(g, e->shape, e->pos, heading, scale, pal, 1.0f);
 
-        /* The taken fighter rides under its captor, in enemy colours. */
+        /* The taken fighter rides with its captor, in enemy colours and turned
+           to face the way they do - it belongs to them now. */
         if (e->has_captive) {
-            Vec2 cap = { e->pos.x, e->pos.y + 15.0f };
+            Vec2 o   = captive_offset(e);
+            Vec2 cap = { e->pos.x + o.x, e->pos.y + o.y };
             shape_draw_pal(g, SHP_FIGHTER, cap, e->heading + 180.0f, 1.0f,
                            &SHAPE_PAL_FIGHTER_CAPTURED, 1.0f);
         }

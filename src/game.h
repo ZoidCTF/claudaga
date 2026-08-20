@@ -105,6 +105,12 @@ typedef struct {
        says the recall and the spawn check are working. */
     int    last_death_tick;
     int    min_death_gap;
+
+    /* When the fighter was last lost, whether to a hit or to a beam. The wait
+       for a replacement is a thing players feel, so it is a thing to measure:
+       a capture that leaves the screen empty for ten seconds is a bug however
+       correct each individual rule along the way is. */
+    int    gone_tick;
 } Game;
 
 /* The starfield. Exposed because the title screen flies the same sky, and two

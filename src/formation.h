@@ -250,6 +250,11 @@ int wave_captive_holder(const Wave *w);
 /* Where a captive rides, so the game can fly the rescue from the right place. */
 Vec2 wave_captive_pos(const Wave *w);
 
+/* A shot at `at` hits the captured fighter rather than its captor. Destroys it
+   and returns true, in which case the fighter is gone for good - the captive is
+   a target in its own right, and it is the one in front. */
+bool wave_captive_hit(Wave *w, Vec2 at);
+
 /* Where an enemy currently is. The capture animation has to fly the fighter up
    to a boss that is still moving. */
 Vec2 wave_enemy_pos(const Wave *w, int index);

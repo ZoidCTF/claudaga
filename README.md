@@ -405,8 +405,47 @@ that lasted fifteen ticks.
 
 Instead of diving, a boss sometimes descends, hangs over the fighter and opens a
 tractor beam. Caught, the fighter is drawn up the cone tumbling, costs a life,
-and rides home underneath its captor in enemy colours. Shoot that boss and the
-captive falls free, flies down and docks alongside the replacement.
+and rides home with its captor in enemy colours.
+
+**The captor climbs back to its slot from where it hangs**, rather than going
+round by the return lane a diver uses. That distinction matters more than it
+sounds: a diver ends its run off the bottom of the screen and genuinely has to
+come back in over the top, but a boss that has been hovering below the formation
+the whole time has not gone anywhere. Sending it round the houses made it vanish
+and reappear in the top corner with the stolen fighter in tow. It now leaves on
+the heading it is already flying — south — so the join curve swings it down and
+around before it climbs, and it turns rather than flipping about-face in a single
+frame.
+
+### Where the captive rides, and why it is a target
+
+Parked, the captured fighter sits **directly above** its captor, which is where
+the arcade puts it and is not decoration. From the fighter's row a shot going
+straight up reaches the captive before the boss, so a boss holding a fighter in
+formation is genuinely shielded by it. The captive is a target in its own right
+and is checked *before* its captor: hit it and it is gone for good, and it pays
+nothing, because it is your own ship.
+
+That would make a rescue impossible if the offset were "above" everywhere, so it
+is not. Attacking, the pair comes down side by side, on the boss's own lateral
+axis so the pairing is carried round the turns rather than being a screen-space
+offset that stops making sense the moment the path bends. That is what opens the
+shot: the boss is only exposed while it is diving, so a rescue has to be taken
+during an attack, and the shot that frees your fighter and the shot that destroys
+it are a few pixels apart.
+
+### The reunion is played out, not fitted in
+
+Freeing the fighter stops the game rather than letting the join happen in
+traffic. The board is recalled, no new attack launches, the surviving fighter is
+walked to the middle of its row, and the freed one flies down to that same fixed
+point to meet it. Control comes back when they dock.
+
+Both halves have to arrive before they join. The rescued fighter gets there
+first as often as not, and docking with a ship still sliding across would snap it
+the rest of the way. Steering during any of it would let the player pull away
+from the very thing flying down to meet them, which is why the controls are held
+rather than merely ignored.
 
 A dual fighter is two hulls, not one wide one: both are real targets, both
 shoot, and it is allowed twice as many shots in the air, which is most of what
@@ -417,11 +456,20 @@ of being captured.
 The beam is geometry - bands sliding down a widening cone, where the movement is
 the whole effect, since a static gradient reads as a shape rather than a beam.
 Free recolouring is what makes the captive cheap: it is the fighter's own
-artwork in the enemy palette, upside down.
+artwork in the enemy palette, turned to face the way its captors do.
 
 Hover height and beam length have to be chosen together. The first attempt
 hovered at y=104 with a beam 78 long, which stops eighty pixels short of the
 fighter's row at 264, so no capture was possible at all.
+
+One thing reported alongside the teleport could not be reproduced: that the
+replacement fighter waits for the whole formation to reassemble. Measured across
+five stages it comes back after a fixed 140 ticks — 2.3 seconds — and the same
+140 both before and after these fixes, because attacks are already paused while
+there is nobody to attack and the board drains during the countdown. On a busier
+board it stretches to about 200. The likeliest explanation is that the captor
+disappearing into the corner made the wait *look* like it was waiting on the
+formation. `--trace` now reports the gap, so if it happens again it will say so.
 
 ## Title screen
 
