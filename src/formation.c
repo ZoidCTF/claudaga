@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* ------------------------------------------------------------------ slots */
 
@@ -112,6 +113,26 @@ static const Vec2 CTRL_CHAL_B[] = {
     {  96,  16 }, { 132, -34 },
 };
 
+/* A lateral crossing: on from one side, a shallow serpentine straight across
+   the middle of the screen, off the other. The only pass that does not spend
+   most of its time travelling down the screen, which is what makes it read
+   differently from the rest - the flyers stay at a constant height and it is
+   the horizontal lead that has to be judged. */
+static const Vec2 CTRL_CHAL_C[] = {
+    { -34, 110 }, {  26, 150 }, {  74, 112 }, { 126, 156 },
+    { 172, 118 }, { 214, 162 }, { 258, 124 },
+};
+
+/* A corkscrew: in at the top, a curl to one side, a cut back across into a
+   wider swing the other way, then out of the bottom. Two turns in opposite
+   directions mean a flyer on this pass crosses its own column twice, so a
+   shot led into the first turn can be waited out for the second. */
+static const Vec2 CTRL_CHAL_D[] = {
+    { 112, -30 }, {  96,  24 }, {  56,  52 }, {  46,  96 },
+    {  86, 116 }, { 120,  92 }, { 146, 124 }, { 174, 166 },
+    { 138, 196 }, { 104, 226 }, { 118, 276 }, { 132, 330 },
+};
+
 /* --------------------------------------------------------------- flights */
 
 /* Eight enemies per flight, alternating between two mirrored paths so the
@@ -134,10 +155,79 @@ static const Flight FLIGHTS[FLIGHT_COUNT] = {
 };
 
 #define ENTRY_SPEED  2.6f    /* pixels per tick along an entry or return path */
-#define DIVE_SPEED   3.1f    /* attacks come in noticeably faster */
 
-/* Ticks between attacks once the wave is up. */
-#define ATTACK_INTERVAL 105
+/* The difficulty ramp.
+ *
+ * Each pair below is stage 1 and the far end of the ramp; a stage in between
+ * gets a straight interpolation, and everything past RAMP_STAGES sits at the
+ * hard end.
+ *
+ * The cap is a ceiling, not a driver, and measuring said so: raising it alone
+ * changed nothing at all, because a dive lasts about 150 ticks and the stage-1
+ * interval is 105, so the screen held two attacks however high the cap was set.
+ * What actually fills the screen is the burst below. Over stages 1, 8 and 20
+ * the peak goes 2, 3, 4 groups and the dives per 6000 ticks go 65, 158, 209.
+ *
+ * Worth being straight about: at those numbers the cap is never reached, so it
+ * currently does nothing. It is kept as a bound on the burst rather than
+ * deleted - the burst length is the knob most likely to be turned up next, and
+ * this is what stops the dive-path pool running dry being the thing that
+ * decides what happens when it is.
+ *
+ * The entry speed deliberately does not ramp. The entry is the part of a stage
+ * the player only watches, and speeding it up shortens the pause before the
+ * shooting starts rather than making anything harder. */
+#define RAMP_STAGES  12
+
+#define ATTACK_INTERVAL      105    /* ticks between attacks, stage 1  */
+#define ATTACK_INTERVAL_END   44
+
+#define DIVE_SPEED_1        3.1f    /* pixels per tick down a dive     */
+#define DIVE_SPEED_END      4.3f
+
+#define DIVER_CAP_1            3    /* dive groups in the air at once  */
+#define DIVER_CAP_END  MAX_DIVERS
+
+#define SWAY_PERIOD_1     420.0f    /* ticks for one full sway cycle   */
+#define SWAY_PERIOD_END   240.0f
+
+/* Extra attacks tacked on to one attack event, and how far apart they come.
+ *
+ * Shortening the interval far enough to fill the screen would leave no lulls at
+ * all, so bursts change the shape rather than the rate: two or three attacks
+ * arriving close together and then a gap, which is both harder to dodge and
+ * easier to read than a metronome.
+ *
+ * The gap between them is the whole ballgame, and it was measured rather than
+ * guessed. Attacks launched close together fly close together, and max_convoy
+ * swept across stages 2 to 24 puts numbers on it: at a gap of 16 the worst pair
+ * flew together for 27 ticks and two stages crossed the convoying line; at 22,
+ * 18 ticks and none; at 24, 9 ticks; at 28, 3. The jump from 22 to 24 is the
+ * cheap one - the worst case halves for about a tenth of the dive count - and
+ * beyond that a burst starts spanning longer than the interval that follows it,
+ * which is an evenly spaced stream with extra steps. */
+#define BURST_LEN_END   3
+#define BURST_GAP      24
+
+/* How close two dive groups have to be, and for how long, to count as
+   travelling together rather than merely crossing. A dive covers three to four
+   pixels a tick, so two groups on different curves are through each other in a
+   handful of ticks; twenty is far past anything a crossing produces. Only the
+   distance is enforced - the tick count is the line the reported figure is
+   read against. */
+#define CONVOY_DIST  14.0f
+#define CONVOY_TICKS 20
+
+/* How much faster the last bonus round flies than the first. Small: a bonus
+   stage is a shooting gallery rather than a threat, so this is about keeping
+   the pattern readable while giving less time to read it. */
+#define CHAL_SPEED_RAMP 0.30f
+
+/* How far the parked block drifts either side of its slots. Unlike everything
+   above this does not ramp: the outer columns sit 40px from the screen edge
+   and a 16px sprite needs 8 of that, so the amplitude is bounded by the screen
+   rather than by taste. Later stages sway faster instead of wider. */
+#define SWAY_AMP 10.0f
 
 /* What a bonus round pays lives in the header, since the game shows the
    totals: CHALLENGE_HIT_SCORE per flyer caught, CHALLENGE_PERFECT for catching
@@ -168,7 +258,8 @@ static const Flight FLIGHTS[FLIGHT_COUNT] = {
    clamped into a cone about straight down, so there is always enough downward
    travel to step aside from. */
 #define ENEMY_SHOT_SPEED  2.3f
-#define FIRE_CHANCE_IN    150     /* per diving enemy, per tick */
+#define FIRE_CHANCE_IN    150     /* per diving enemy, per tick, stage 1 */
+#define FIRE_CHANCE_IN_END 68     /* and at the far end of the ramp      */
 #define FIRE_MIN_HEIGHT   44.0f   /* must be this far above the fighter's row */
 #define FIRE_MAX_SLOPE    1.0f    /* |dx| <= dy: 45 degrees from straight down */
 
@@ -336,11 +427,15 @@ void wave_init(Wave *w)
     path_build(&w->paths[PATH_RETURN_L],   CTRL_RETURN,   ARRAY_COUNT(CTRL_RETURN));
     path_build(&w->paths[PATH_CHAL_A_L],   CTRL_CHAL_A,   ARRAY_COUNT(CTRL_CHAL_A));
     path_build(&w->paths[PATH_CHAL_B_L],   CTRL_CHAL_B,   ARRAY_COUNT(CTRL_CHAL_B));
+    path_build(&w->paths[PATH_CHAL_C_L],   CTRL_CHAL_C,   ARRAY_COUNT(CTRL_CHAL_C));
+    path_build(&w->paths[PATH_CHAL_D_L],   CTRL_CHAL_D,   ARRAY_COUNT(CTRL_CHAL_D));
     path_mirror(&w->paths[PATH_TOP_DIVE_R], &w->paths[PATH_TOP_DIVE_L]);
     path_mirror(&w->paths[PATH_SWEEP_R],    &w->paths[PATH_SWEEP_L]);
     path_mirror(&w->paths[PATH_RETURN_R],   &w->paths[PATH_RETURN_L]);
     path_mirror(&w->paths[PATH_CHAL_A_R],   &w->paths[PATH_CHAL_A_L]);
     path_mirror(&w->paths[PATH_CHAL_B_R],   &w->paths[PATH_CHAL_B_L]);
+    path_mirror(&w->paths[PATH_CHAL_C_R],   &w->paths[PATH_CHAL_C_L]);
+    path_mirror(&w->paths[PATH_CHAL_D_R],   &w->paths[PATH_CHAL_D_L]);
 
     w->show_paths      = false;
     w->attacks_enabled = true;
@@ -351,7 +446,53 @@ void wave_init(Wave *w)
        different attack patterns while a whole run stays reproducible. */
     w->rng = 0x5A17C0DEu;
 
-    wave_restart(w);
+    wave_restart(w, 1);
+}
+
+/* Works the stage number into the handful of numbers that describe how hard a
+   wave is. Done once per stage rather than per tick, so a stage's character is
+   fixed the moment it starts and cannot drift under it. */
+static void set_difficulty(Wave *w, int stage)
+{
+    if (stage < 1) stage = 1;
+    w->stage = stage;
+
+    float t = (float)(stage - 1) / (float)RAMP_STAGES;
+    if (t > 1.0f) t = 1.0f;
+
+    w->attack_interval = ATTACK_INTERVAL +
+        (int)((ATTACK_INTERVAL_END - ATTACK_INTERVAL) * t);
+    w->dive_speed      = DIVE_SPEED_1 + (DIVE_SPEED_END - DIVE_SPEED_1) * t;
+    w->diver_cap       = DIVER_CAP_1 +
+        (int)((DIVER_CAP_END - DIVER_CAP_1) * t + 0.5f);
+    w->fire_chance_in  = FIRE_CHANCE_IN +
+        (int)((FIRE_CHANCE_IN_END - FIRE_CHANCE_IN) * t);
+    w->burst_len       = (int)(BURST_LEN_END * t + 0.5f);
+    w->sway_period     = SWAY_PERIOD_1 + (SWAY_PERIOD_END - SWAY_PERIOD_1) * t;
+}
+
+/* How many dive groups are in the air. A boss and its escorts share one path
+   and count once between them, which is the unit the cap is written in: three
+   groups is three attacks to dodge whether that is three bees or three full
+   escorted bosses. */
+static int dive_groups(const Wave *w)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_DIVERS; ++i) if (w->dive_refs[i] > 0) ++n;
+    return n;
+}
+
+/* A formation slot with the block's sway applied. formation_slot_pos gives a
+   slot's home, which is what something aiming for the formation wants;
+   anything that has to actually be at the slot wants this. Keeping the two
+   apart is what stops the sway from disturbing an arriving enemy: the join
+   curve is built in slot space and the offset added to its output, so the
+   curve does not have to be rebuilt as the block moves under it. */
+static Vec2 slot_pos(const Wave *w, int slot)
+{
+    Vec2 v = formation_slot_pos(slot);
+    v.x += w->sway;
+    return v;
 }
 
 /* Everything the two kinds of stage share. */
@@ -363,6 +504,14 @@ static void wave_reset_common(Wave *w)
     w->captive_holder = -1;
     w->min_lane_gap = 1e9f;
     w->shot_max_deg = 0.0f;
+    w->peak_divers  = 0;
+    w->max_convoy   = 0;
+    w->park_off_min =  1e9f;
+    w->park_off_max = -1e9f;
+    memset(w->convoy_run, 0, sizeof w->convoy_run);
+    w->burst_left   = 0;
+    w->last_side    = 0;
+    w->sway         = 0.0f;
     for (int i = 0; i < MAX_DIVERS; ++i) w->dive_refs[i] = 0;
     for (int i = 0; i < PATH_COUNT; ++i)  w->lane_free[i] = 0;
     for (int i = 0; i < MAX_ENEMY_SHOTS; ++i) w->shot[i].alive = false;
@@ -393,37 +542,78 @@ static void wave_reset_common(Wave *w)
     }
 }
 
-void wave_restart(Wave *w)
+void wave_restart(Wave *w, int stage)
 {
     w->challenge      = false;
     w->challenge_hits = 0;
+    set_difficulty(w, stage);
     wave_reset_common(w);
 }
 
-void wave_restart_challenge(Wave *w, int variant)
+/* A challenging round: which two passes the flyers fly, the rhythm they arrive
+   on, and how fast. Naming only the left-hand lane of each pair is enough,
+   since every right-hand id follows its left-hand one - see PathId.
+   
+   The rounds differ in shape rather than in difficulty. A bonus stage pays the
+   same either way, so what varies is the pattern to be read: A and B are the
+   original descent and climb, C crosses the screen sideways, and D corkscrews
+   through the middle. Pairing them differently each time means no two rounds
+   present the same problem even where they share a pass. */
+typedef struct {
+    PathId lane_a, lane_b;
+    int    group_gap;    /* ticks between one group of five and the next */
+    int    within_gap;   /* ticks between flyers inside a group          */
+    float  speed;        /* multiple of the entry speed                  */
+} ChallengeRound;
+
+static const ChallengeRound CHAL_ROUNDS[SHP_BONUS_COUNT] = {
+    { PATH_CHAL_A_L, PATH_CHAL_B_L, 74, 13, 1.15f },
+    { PATH_CHAL_C_L, PATH_CHAL_D_L, 66, 10, 1.25f },
+    { PATH_CHAL_B_L, PATH_CHAL_C_L, 82, 15, 1.05f },
+    { PATH_CHAL_D_L, PATH_CHAL_A_L, 58,  9, 1.35f },
+};
+
+void wave_restart_challenge(Wave *w, int stage, int variant)
 {
+    set_difficulty(w, stage);
     wave_reset_common(w);
     w->challenge      = true;
     w->challenge_hits = 0;
 
-    ShapeId shape = (ShapeId)(SHP_BONUS_FIRST + (variant % SHP_BONUS_COUNT));
+    if (variant < 0) variant = 0;
+    int r = variant % SHP_BONUS_COUNT;
+    const ChallengeRound *round = &CHAL_ROUNDS[r];
 
-    /* Eight groups of five, alternating the two passes and the side they come
-       in on, so the screen is crossed from several directions at once. */
+    ShapeId shape = (ShapeId)(SHP_BONUS_FIRST + r);
+
+    /* Later rounds fly faster on top of whatever pace the pattern itself asks
+       for. Without this, cycling back to the first pattern at stage 19 would
+       be a step backwards - the round table sets a round's character, and the
+       stage sets how hard that character is to deal with. */
+    float t = (float)(stage - 1) / (float)RAMP_STAGES;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float speed = ENTRY_SPEED * round->speed * (1.0f + CHAL_SPEED_RAMP * t);
+
+    /* The round's two passes and both their mirrors, so the screen is crossed
+       from four directions rather than two. */
+    const PathId lanes[4] = {
+        round->lane_a, (PathId)(round->lane_a + 1),
+        round->lane_b, (PathId)(round->lane_b + 1),
+    };
+
+    /* Eight groups of five, stepping through the lanes so consecutive groups
+       never share one. */
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         Enemy *e = &w->enemies[i];
         int group  = i / 5;
         int within = i % 5;
 
-        static const PathId LANES[4] = {
-            PATH_CHAL_A_L, PATH_CHAL_A_R, PATH_CHAL_B_L, PATH_CHAL_B_R,
-        };
-
         e->shape       = shape;
         e->state       = ENEMY_WAITING;
-        e->path        = LANES[(group + variant) % 4];
-        e->launch_tick = group * 74 + within * 13;
-        e->speed       = ENTRY_SPEED * 1.15f;
+        e->path        = lanes[group % 4];
+        e->launch_tick = group * round->group_gap + within * round->within_gap;
+        e->speed       = speed;
         e->pos         = w->paths[e->path].pt[0];
         e->heading     = HEADING_S;
     }
@@ -539,11 +729,39 @@ static void launch_attack(Wave *w, float player_x)
     int ready[TYPE_COUNT][MAX_ENEMIES];
     int n[TYPE_COUNT] = { 0, 0, 0 };
 
-    for (int i = 0; i < MAX_ENEMIES; ++i) {
-        const Enemy *e = &w->enemies[i];
-        if (e->state != ENEMY_FORMED) continue;
-        int t = type_of(e->shape);
-        ready[t][n[t]++] = i;
+    /* Inside a burst, only the far half of the formation is in the running. A
+       dive breaks towards its nearer edge, so two leaders parked on the same
+       side fly near-identical curves - which measurably put two groups
+       convoying for around half a second. Choosing across the middle makes
+       them diverge by construction, without overriding the break rule or
+       moving a single control point.
+
+       The filter has to come before the type is chosen rather than after.
+       Picking the type first and then looking for a member on the far side
+       means a burst that lands on the bosses - four of them, often all on one
+       side - finds nobody and falls straight back to the near half, which is
+       exactly the case that convoys.
+
+       Straight about what this is worth: the burst gap alone already clears
+       the convoying line, and without this the worst pair over stages 2 to 24
+       flies together for 16 ticks rather than 9. So it is not load-bearing. It
+       is kept because halving the residue is cheap, and because a burst that
+       alternates sides fans out across the screen instead of arriving from one
+       half of the formation - which is worth having on its own. */
+    int prefer = (w->burst_left > 0) ? -w->last_side : 0;
+
+    for (int pass = 0; pass < 2; ++pass) {
+        n[0] = n[1] = n[2] = 0;
+        for (int i = 0; i < MAX_ENEMIES; ++i) {
+            const Enemy *e = &w->enemies[i];
+            if (e->state != ENEMY_FORMED) continue;
+            if (prefer != 0 &&
+                ((e->pos.x < GAME_W * 0.5f) ? -1 : 1) != prefer) continue;
+            int t = type_of(e->shape);
+            ready[t][n[t]++] = i;
+        }
+        if (n[0] + n[1] + n[2] > 0) break;
+        prefer = 0;   /* nothing parked over there; take whatever is up */
     }
     if (n[0] + n[1] + n[2] == 0) return;
 
@@ -590,12 +808,18 @@ static void launch_attack(Wave *w, float player_x)
         return;
     }
 
+    /* As busy as this stage is allowed to get. The attack is dropped rather
+       than queued: holding it would mean a burst the moment a group landed,
+       which is a spike where the ramp wants a steady rate. */
+    if (dive_groups(w) >= w->diver_cap) return;
+
     int p = dive_path_alloc(w);
     if (p < 0) return;   /* pool full; the next attack will get a slot */
 
     /* Break towards the nearer edge, so a dive opens out across the screen
        rather than immediately crossing the whole formation. */
     int side = (leader->pos.x < GAME_W * 0.5f) ? -1 : 1;
+    w->last_side = side;
     build_dive_path(&w->dive_paths[p], leader->pos, side, player_x);
 
     join_dive(w, leader, p, 0.0f, 0.0f);
@@ -623,6 +847,7 @@ static void launch_attack(Wave *w, float player_x)
 }
 
 static void track_lane_gap(Wave *w);
+static void track_convoys(Wave *w);
 
 /* How many of a boss's escorts are still flying its path. The arcade pays more
    for a boss killed with its escort intact, and because a group shares one dive
@@ -804,17 +1029,35 @@ void wave_update(Wave *w, float player_x)
 {
     ++w->tick;
 
+    /* The parked block drifts from side to side. One offset moves the whole
+       formation, so the shape of it never distorts - the arcade sways the
+       block as a unit and the columns stay columns. Starting from a sine at
+       tick 0 means the offset is zero while the wave is still flying in, so
+       the entry paths still end exactly on their slots. */
+    w->sway = SWAY_AMP * sinf((float)w->tick *
+                              (2.0f * (float)M_PI) / w->sway_period);
+
     /* Attacks only start once the wave is up, the way a stage does. The check
        has to latch: the instant the first enemy leaves its slot the formation
        is no longer complete, so testing it every tick would fire one attack
        and then never another. A non-zero next_attack is that latch. */
     if (w->attacks_enabled && !w->attacks_paused && !w->challenge) {
         if (w->next_attack == 0 && wave_all_formed(w)) {
-            w->next_attack = w->tick + ATTACK_INTERVAL;
+            w->next_attack = w->tick + w->attack_interval;
         }
         if (w->next_attack != 0 && w->tick >= w->next_attack) {
             launch_attack(w, player_x);
-            w->next_attack = w->tick + ATTACK_INTERVAL;
+
+            /* Either we are partway through a burst, in which case the next
+               one follows close behind, or the burst is done and the wave goes
+               quiet for a full interval. */
+            if (w->burst_left > 0) {
+                --w->burst_left;
+                w->next_attack = w->tick + BURST_GAP;
+            } else {
+                w->burst_left  = w->burst_len;
+                w->next_attack = w->tick + w->attack_interval;
+            }
         }
     }
 
@@ -866,16 +1109,18 @@ void wave_update(Wave *w, float player_x)
                                        e->join_p1, e->join_t1, u);
             e->heading = heading_from_vec(tan.x, tan.y);
 
+            e->pos.x += w->sway;
+
             if (e->join_t >= 1.0f) {
                 e->state   = ENEMY_FORMED;
-                e->pos     = e->join_p1;
+                e->pos     = slot_pos(w, e->slot);
                 e->heading = HEADING_N;
             }
             break;
         }
 
         case ENEMY_FORMED:
-            e->pos = formation_slot_pos(e->slot);
+            e->pos = slot_pos(w, e->slot);
             break;
 
         case ENEMY_DEAD:
@@ -903,7 +1148,7 @@ void wave_update(Wave *w, float player_x)
 
         case ENEMY_DIVING: {
             const Path *dp = &w->dive_paths[e->dive_path];
-            e->dive_s += DIVE_SPEED;
+            e->dive_s += w->dive_speed;
 
             /* Every member of a group advances the same distance; where each
                one actually sits is that distance plus its own station. */
@@ -935,7 +1180,7 @@ void wave_update(Wave *w, float player_x)
                 e->pos     = here;
                 e->heading = h;
 
-                if (rng_below(w, FIRE_CHANCE_IN) == 0) enemy_fire(w, e, player_x);
+                if (rng_below(w, w->fire_chance_in) == 0) enemy_fire(w, e, player_x);
             }
             break;
         }
@@ -954,10 +1199,33 @@ void wave_update(Wave *w, float player_x)
     }
 
     track_lane_gap(w);
+    track_convoys(w);
+
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        const Enemy *e = &w->enemies[i];
+        if (e->state != ENEMY_FORMED) continue;
+        float off = e->pos.x - formation_slot_pos(e->slot).x;
+        if (off < w->park_off_min) w->park_off_min = off;
+        if (off > w->park_off_max) w->park_off_max = off;
+    }
+
+    int groups = dive_groups(w);
+    if (groups > w->peak_divers) w->peak_divers = groups;
 }
 
 void wave_print_stats(const Wave *w)
 {
+    printf("stage %d: attack every %d ticks, dive speed %.1f, cap %d group(s), "
+           "fire 1 in %d, sway %.0fpx over %.0f ticks\n",
+           w->stage, w->attack_interval, w->dive_speed, w->diver_cap,
+           w->fire_chance_in, SWAY_AMP, w->sway_period);
+    printf("peak dive groups in the air at once: %d (cap %d)\n",
+           w->peak_divers, w->diver_cap);
+    printf("longest two dive groups flew together: %d ticks (%d = convoying)\n",
+           w->max_convoy, CONVOY_TICKS);
+    printf("parked enemies sat between %+.1f and %+.1f px from their slots\n",
+           w->park_off_min, w->park_off_max);
+
     int total = w->dives_boss + w->dives_butterfly + w->dives_bee;
     if (total == 0) { printf("no dives yet\n"); return; }
     printf("dives after %d ticks: %d total\n", w->tick, total);
@@ -996,6 +1264,44 @@ static void track_lane_gap(Wave *w)
             float dx = a->pos.x - b->pos.x, dy = a->pos.y - b->pos.y;
             float d  = sqrtf(dx * dx + dy * dy);
             if (d < w->min_lane_gap) w->min_lane_gap = d;
+        }
+    }
+}
+
+/* Tracks, for every pair of dive groups in the air, how long they have been
+   close. Within a group the escorts are meant to fly close to their boss, so
+   only enemies on different dive paths are compared. */
+static void track_convoys(Wave *w)
+{
+    float best[MAX_DIVERS][MAX_DIVERS];
+    for (int a = 0; a < MAX_DIVERS; ++a)
+        for (int b = 0; b < MAX_DIVERS; ++b) best[a][b] = 1e9f;
+
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        const Enemy *ea = &w->enemies[i];
+        if (ea->state != ENEMY_DIVING || ea->dive_path < 0) continue;
+        for (int j = i + 1; j < MAX_ENEMIES; ++j) {
+            const Enemy *eb = &w->enemies[j];
+            if (eb->state != ENEMY_DIVING || eb->dive_path < 0) continue;
+            if (eb->dive_path == ea->dive_path) continue;
+
+            int a = ea->dive_path, b = eb->dive_path;
+            if (a > b) { int t = a; a = b; b = t; }
+
+            float dx = ea->pos.x - eb->pos.x, dy = ea->pos.y - eb->pos.y;
+            float d  = sqrtf(dx * dx + dy * dy);
+            if (d < best[a][b]) best[a][b] = d;
+        }
+    }
+
+    for (int a = 0; a < MAX_DIVERS; ++a) {
+        for (int b = a + 1; b < MAX_DIVERS; ++b) {
+            if (best[a][b] < CONVOY_DIST) {
+                if (++w->convoy_run[a][b] > w->max_convoy)
+                    w->max_convoy = w->convoy_run[a][b];
+            } else {
+                w->convoy_run[a][b] = 0;
+            }
         }
     }
 }

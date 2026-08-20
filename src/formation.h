@@ -92,9 +92,15 @@ typedef enum {
     PATH_TOP_DIVE_L, PATH_TOP_DIVE_R,
     PATH_SWEEP_L,    PATH_SWEEP_R,
     PATH_RETURN_L,   PATH_RETURN_R,
-    PATH_CHAL_A_L,   PATH_CHAL_A_R,   /* challenging-stage passes: these */
-    PATH_CHAL_B_L,   PATH_CHAL_B_R,   /* leave the screen rather than    */
-    PATH_COUNT                        /* ending below the formation      */
+    /* Challenging-stage passes. Unlike the others these leave the screen
+       rather than ending below the formation, and a bonus round picks two of
+       the four. Every right-hand id follows its left-hand one, which is what
+       lets a round name one lane and get the mirrored pair. */
+    PATH_CHAL_A_L,   PATH_CHAL_A_R,
+    PATH_CHAL_B_L,   PATH_CHAL_B_R,
+    PATH_CHAL_C_L,   PATH_CHAL_C_R,
+    PATH_CHAL_D_L,   PATH_CHAL_D_R,
+    PATH_COUNT
 } PathId;
 
 typedef struct {
@@ -116,6 +122,25 @@ typedef struct {
     int   tick;
     int   next_attack;       /* tick the next attack is due */
     int   captive_holder;    /* enemy carrying a captured fighter, or -1 */
+
+    /* Difficulty. Every one of these was a compile-time constant until stages
+       started to differ from one another; they are now worked out once, from
+       the stage number, when the wave resets. The constants they ramp between
+       live in formation.c next to the rest of the tuning. */
+    int   stage;
+    int   attack_interval;   /* ticks between attacks          */
+    float dive_speed;        /* pixels per tick down a dive    */
+    int   diver_cap;         /* dive groups allowed at once    */
+    int   fire_chance_in;    /* 1-in-N per diver per tick      */
+    int   burst_len;         /* extra attacks tacked on to one */
+    int   burst_left;        /* still owed on the current one  */
+    int   last_side;         /* which edge the last dive broke towards */
+    float sway_period;       /* ticks for one full sway cycle  */
+
+    /* Where the parked block currently sits relative to its slots. The whole
+       formation shares one offset, so this is a single number rather than
+       something each enemy carries. */
+    float sway;
 
     /* A challenging stage: the wave flies through without ever forming up,
        never attacks and never fires, and anything not shot simply escapes. */
@@ -143,6 +168,32 @@ typedef struct {
        number that says whether the lane queue is doing its job. */
     float min_lane_gap;
 
+    /* The longest two dive groups have spent flying on top of one another, in
+       ticks. Bursts launch groups seconds apart from wherever they happen to be
+       parked, so two leaders on the same side of the formation can end up on
+       near-identical curves - which is the bug the formation already had once,
+       arriving.
+
+       Distance alone will not measure this. Two groups on genuinely different
+       curves cross each other regularly, and a crossing puts them briefly at
+       zero: the first attempt at this metric read 0.3px and meant nothing.
+       What separates a crossing from a convoy is how long it lasts, so what is
+       tracked is the run of consecutive ticks a pair of groups stays close. A
+       crossing is two or three; anything travelling together is dozens. */
+    /* How far a parked enemy has actually been seen sitting from its slot.
+       The sway is a single offset applied in one place, so what is worth
+       measuring is not the arithmetic but whether the block really moves: this
+       is taken from the enemies themselves rather than from the offset. */
+    float park_off_min, park_off_max;
+
+    int   max_convoy;
+    int   convoy_run[MAX_DIVERS][MAX_DIVERS];
+
+    /* Most dive groups in the air at once. The difficulty ramp raises the
+       ceiling on this, so it is the number that says the ramp is doing
+       something rather than just being computed. */
+    int   peak_divers;
+
     /* Steepest missile fired, in degrees away from straight down. A shot that
        approaches 90 travels along the fighter's own row, which cannot be
        dodged, so this is the number that says the aim cone is holding. */
@@ -153,11 +204,17 @@ typedef struct {
 } Wave;
 
 void wave_init(Wave *w);       /* builds paths and slots; call once */
-void wave_restart(Wave *w);    /* sends everyone back off-screen */
 
-/* A challenging stage instead of an ordinary one. `variant` picks which bonus
-   flyer fields it and which patterns they fly. */
-void wave_restart_challenge(Wave *w, int variant);
+/* Sends everyone back off-screen to fly in again. `stage` is the stage number
+   the wave is about to be, which is what sets the difficulty: the same forty
+   enemies attack faster, more of them at once, and shoot more often as it
+   climbs. */
+void wave_restart(Wave *w, int stage);
+
+/* A challenging stage instead of an ordinary one. `variant` picks the round -
+   which two passes the flyers fly, which flyer fields it, and the rhythm they
+   arrive on. */
+void wave_restart_challenge(Wave *w, int stage, int variant);
 
 bool wave_is_challenge(const Wave *w);
 int  wave_challenge_hits(const Wave *w);

@@ -125,6 +125,7 @@ static void trace_new_wave(const Game *g)
 void game_init(Game *g)
 {
     memset(g, 0, sizeof *g);
+    g->first_stage = 1;
     wave_init(&g->wave);
     stars_init();
     game_restart(g);
@@ -133,7 +134,7 @@ void game_init(Game *g)
 void game_restart(Game *g)
 {
     g->score       = 0;
-    g->stage       = 1;
+    g->stage       = g->first_stage > 0 ? g->first_stage : 1;
     g->tick        = 0;
     g->stage_clear = 0;
     g->game_over   = 0;
@@ -170,9 +171,9 @@ static bool is_challenge_stage(int stage)
 static void start_stage(Game *g)
 {
     if (is_challenge_stage(g->stage)) {
-        wave_restart_challenge(&g->wave, g->stage / 4);
+        wave_restart_challenge(&g->wave, g->stage, (g->stage - 3) / 4);
     } else {
-        wave_restart(&g->wave);
+        wave_restart(&g->wave, g->stage);
     }
 }
 

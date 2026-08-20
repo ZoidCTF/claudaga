@@ -70,13 +70,13 @@ function, so the two cannot drift apart.
 
 Flags: `--title` / `--scene` / `--pose` / `--shapes` pick a starting view — and
 `--at` or `--stats` without one implies the game, since there is nothing to
-fast-forward on a menu. Others: `--page N` and `--subject N`
-pick within it, `--scale N` sets the window zoom (default 3), `--paths` turns on
-the path overlay, `--at TICK` fast-forwards the simulation before the first
-frame, `--shot out.bmp` renders one frame and exits, `--stats N` runs the wave
-headless for N ticks and reports which enemies attacked and how close any two
-flying the same path came to each other, and `--trace` logs each stage
-handover.
+fast-forward on a menu. Others: `--subject N` picks within it, `--scale N` sets
+the window zoom (default 3), `--paths` turns on the path overlay, `--at TICK`
+fast-forwards the simulation before the first frame, `--shot out.bmp` renders
+one frame and exits, `--stats N` runs the wave headless for N ticks and reports
+what the stage's difficulty works out to and how the wave behaved under it,
+`--stage N` starts on a later stage so that difficulty can be measured without
+playing up to it, and `--trace` logs each stage handover.
 
 `--trace` reports each stage handover: what was still in the air when the stage
 ended, and whether the new wave arrives with stray shots or already-damaged
@@ -344,8 +344,7 @@ enough downward travel to step aside from. `--stats` reports the steepest shot
 fired over a run; it reads 45 degrees with the rules in - the clamp binding at
 exactly its ceiling - and 78 without.
 
-Clearing every enemy pauses briefly and sends in the next stage. Nothing else
-about a stage changes yet — the attack rate and speeds are fixed.
+Clearing every enemy pauses briefly and sends in the next stage.
 
 Only **one player missile** may be in the air at a time. Missing therefore
 costs real time, since the shot has to clear the top of the screen before
@@ -446,6 +445,93 @@ One shield shape drawn six ways. On the cabinet these are six separate pieces of
 art, but the whole job of a flag is to be told apart from the others at a
 glance, and colour alone does that — so it is one drawing and six palettes.
 
+## Difficulty, and the shape of an attack
+
+Every stage used to be stage one: the attack interval, the dive speed and the
+missile rate were compile-time constants and the wave never saw the stage
+number. It does now, and works out six numbers once when the stage starts —
+interval, dive speed, missile rate, burst length, a ceiling on how many attacks
+may be in the air, and the sway period. Stage 1 and stage 12 are the two ends;
+anything between is interpolated and anything past 12 sits at the hard end.
+
+The interesting part is what *didn't* work. Raising the cap on simultaneous
+attacks changed nothing whatsoever, and `--stats` said so plainly: the peak sat
+at two dive groups at every stage from 1 to 20, however high the ceiling went. A
+dive lasts about 150 ticks and the stage-1 interval is 105, so two is simply
+what fits — the cap was never the binding constraint, the interval was, and
+shortening the interval far enough to change that would leave no lulls at all.
+
+So the shape changed instead of the rate. An attack event now launches a
+**burst** — one attack at stage 1, up to four by stage 12, arriving 24 ticks
+apart and then followed by a full interval of quiet. That is harder to dodge
+than a metronome and easier to read. Measured over 6000 ticks, stages 1 / 8 / 20
+give peaks of 2 / 3 / 4 dive groups and 65 / 158 / 209 dives.
+
+The ceiling, to be straight about it, is never actually reached at those
+numbers — peak 4 against a cap of 6 — so it currently does nothing. It is kept
+as a bound on the burst rather than deleted, since burst length is the knob most
+likely to be turned up next and the alternative is the dive-path pool running
+dry deciding what happens instead.
+
+Bursts reintroduced an old bug, and did it quietly. A dive breaks towards its
+nearer edge, so two leaders parked on the same side of the formation fly
+near-identical curves — the same "two enemies on top of each other" the entry
+lanes needed a queue to fix. Two things keep them apart: the 22-tick gap, and
+picking each follow-up attacker from the *opposite* half of the formation. That
+filter has to be applied before the attacker's type is chosen rather than after,
+or a burst landing on the bosses — four of them, often all on one side — finds
+nobody eligible and falls straight back to the near half, which is exactly the
+case that goes wrong.
+
+### Measuring "flying together" is not measuring distance
+
+The first attempt at a detector took the closest two enemies in different dive
+groups ever came. It read **0.3px**, which sounds alarming and means nothing:
+groups on genuinely different curves *cross* each other all the time, and a
+crossing puts them at zero for an instant. Minimum distance cannot tell a
+crossing from a convoy.
+
+What separates them is duration, so what is tracked is the longest run of
+consecutive ticks a pair of groups stays within 14px. A crossing is two or three
+ticks; anything travelling together is dozens. Swept across stages 2 to 24:
+
+| burst gap | worst run | mean | stages over the 20-tick line |
+|---|---|---|---|
+| 16 ticks | 27 | 12.2 | 2 |
+| 22 ticks | 18 | 4.2 | 0 |
+| 24 ticks | 9 | 0.7 | 0 |
+| 28 ticks | 3 | 0.3 | 0 |
+
+24 is the cheap step: the worst case halves for about a tenth of the dive count.
+Past that a burst starts spanning longer than the interval that follows it,
+which is an evenly spaced stream with extra steps.
+
+The opposite-side rule is *not* load-bearing, and the sweep says so — without it
+the worst run at the same 24-tick gap is 16 rather than 9, still under the line.
+It is kept because halving the residue is cheap, and because a burst that
+alternates sides fans out across the screen instead of arriving out of one half
+of the formation, which is worth having on its own.
+
+### The formation sways
+
+The parked block drifts ten pixels either side of its slots, on a cycle that
+tightens from 420 ticks at stage 1 to 240 at the top of the ramp. Amplitude is
+fixed rather than ramped, and by the screen rather than by taste: the outer
+columns sit 40px from the edge and a 16px sprite needs 8 of that.
+
+One offset moves the entire formation, so the block never distorts — columns
+stay columns, which is how the arcade does it. The subtlety is the arriving
+enemy. Its join curve is built against the slot's *home*, and the sway is added
+to the curve's output rather than to its endpoint, so the block can move
+underneath an approaching enemy without the curve needing to be rebuilt and
+without the arrival snapping — which is the same "weird slide into position"
+that the Hermite join was introduced to kill in the first place. The sine starts
+at zero, so it is also motionless while the wave is still flying in.
+
+`--stats` reports how far parked enemies were actually seen sitting from their
+slots, taken from the enemies rather than from the offset: it reads -10.0 to
++10.0.
+
 ## Challenging stages
 
 Every fourth stage from the third - 3, 7, 11 - is a bonus round. Forty flyers
@@ -460,8 +546,18 @@ bonus one is gone.
 
 Catching one pays 100; catching all forty pays a further 10,000, deliberately
 worth far more than the sum of the hits so the round is something to be good at
-rather than a free forty shots. Four bonus flyers - moth, scorpion, dart and orb
-- cycle through the rounds. The arcade fields more sets than that.
+rather than a free forty shots.
+
+Four rounds cycle, and they differ in pattern rather than only in colour. There
+are four passes to draw on — the original S-shaped descent and the climb out
+through the top, plus a lateral crossing that serpentines straight across the
+middle of the screen without descending at all, and a corkscrew that turns twice
+in opposite directions on its way out of the bottom. Each round flies two of
+them, mirrored, so the screen is crossed from four directions; each also sets
+its own group spacing and speed, and gets a further speed multiplier from the
+stage number so that cycling back round to the first pattern at stage 19 is not
+a step backwards. The four flyers — moth, scorpion, dart and orb — ride along
+with the rounds.
 
 ### The wave has its own random generator
 
@@ -502,10 +598,11 @@ to *behaves like Galaga*.
 
 ## Next
 
-Mechanically: the formation's side-to-side sway, and a difficulty ramp so the
-attack rate, dive speed and number of simultaneous divers climb with the stage
-instead of sitting at their stage-one values. The arcade also fields more than
-four sets of challenging-stage flyers, and varies their patterns per round.
+There is no sound at all, which is the largest single absence — the entry march,
+the capture siren and the dual-fighter fanfare are a great deal of what Galaga
+sounds like, and the Options screen has nothing to configure until they exist.
+No controller support either; the fighter is keyboard-only.
 
-Smaller gaps: there is no sound, the extra-life award at 20,000 points is not
-implemented, and the end-of-game hit-ratio screen is missing.
+Scoring is missing its meta layer: no extra life at 20,000 points, no high
+score, and no end-of-game hit-ratio screen — which needs shots fired and hits
+landed counted, and neither is.

@@ -239,6 +239,7 @@ static void usage(void)
             "                [--subject N] [--scale N]\n"
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
+            "                [--stage N]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -256,6 +257,7 @@ int main(int argc, char **argv)
     int         stats     = 0;
     bool        paths     = false;
     bool        observe   = false;
+    int         first_stage = 1;
     bool        autofire  = false;
     bool        trace     = false;
 
@@ -269,6 +271,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--scale")   && i + 1 < argc)  scale = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--at")      && i + 1 < argc)  warmup = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--stats")   && i + 1 < argc)  stats = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--stage")   && i + 1 < argc)  first_stage = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--paths"))                    paths = true;
         else if (!strcmp(argv[i], "--observe"))                  observe = true;
         else if (!strcmp(argv[i], "--autofire"))                 autofire = true;
@@ -288,6 +291,15 @@ int main(int argc, char **argv)
 
     static Game game;   /* several hundred KB of baked paths; not stack-sized */
     game_init(&game);
+
+    /* Starting later is a measurement tool rather than a cheat: the difficulty
+       ramp only shows itself over a dozen stages, and playing up to stage 12 to
+       check a number is not a test anybody runs twice. */
+    if (first_stage > 1) {
+        game.first_stage = first_stage;
+        game_restart(&game);
+    }
+
     game.wave.show_paths = paths;
     game.invulnerable    = observe;
     game.trace           = trace;
