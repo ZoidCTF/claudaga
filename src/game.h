@@ -51,6 +51,24 @@ typedef struct {
     Fx     fx;
 
     int    score;
+
+    /* The best score this machine has seen. Kept out of game_restart so it
+       survives a new game, and written to disk so it survives the process. */
+    int    high_score;
+
+    /* Score at which the next spare fighter is awarded. */
+    int    next_life;
+    int    extra_msg;     /* ticks left on the EXTRA FIGHTER notice */
+
+    /* Every shot fired and every one that hit something, for the results
+       screen. Galaga ends a game by telling you how well you shot rather than
+       only how far you got, which means counting the misses too - so this is
+       tallied at the muzzle, not at the target. */
+    int    shots_fired;
+    int    shots_hit;
+    int    results;       /* ticks left on the results screen */
+    bool   results_armed; /* fire has been released since the game ended */
+
     int    stage;
 
     /* Which stage a run begins on. Always 1 in play; --stage sets it so a

@@ -28,6 +28,20 @@ static const SDL_Color DIM    = { 150, 150, 168, 255 };
 #define STAGE_PAUSE     120
 #define GAME_OVER_TICKS 240
 
+/* How long the results screen holds before the game reports itself finished.
+   Long enough to read four lines without hurrying; fire cuts it short. */
+#define RESULTS_TICKS 420
+
+/* How long the extra-fighter notice stays up. */
+#define EXTRA_MSG_TICKS 120
+
+/* Extra fighters, on the arcade's default schedule: the first at 20,000, the
+   second at 70,000, and one more every 70,000 after that. The spare-ship row
+   only has space for five, so beyond that the count keeps rising but the
+   display does not. */
+#define FIRST_EXTRA_LIFE 20000
+#define EXTRA_LIFE_EVERY 70000
+
 /* Collision is a distance test rather than a box. The art inside a 16x16 cell
    is smaller than the cell, so these are all tighter than half a sprite - the
    arcade is famously forgiving about near misses and matching that matters
@@ -122,6 +136,45 @@ static void trace_new_wave(const Game *g)
            g->tick, g->stage, damaged, live_shots, enemy_shots);
 }
 
+/* The high score outlives the process, and is the only file this game touches.
+   It goes wherever SDL says user data belongs rather than next to the
+   executable, which is often somewhere unwritable - and every failure here is
+   silent on purpose: a game that will not start because it could not read a
+   high score would be a worse game than one that forgets. */
+static void highscore_path(char *out, size_t n)
+{
+    char *pref = SDL_GetPrefPath("Claudaga", "Claudaga");
+    if (!pref) { out[0] = 0; return; }
+    snprintf(out, n, "%shighscore", pref);
+    SDL_free(pref);
+}
+
+static int highscore_load(void)
+{
+    char path[512];
+    highscore_path(path, sizeof path);
+    if (!path[0]) return 0;
+
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    int v = 0;
+    if (fscanf(f, "%d", &v) != 1) v = 0;
+    fclose(f);
+    return v > 0 ? v : 0;
+}
+
+static void highscore_save(int v)
+{
+    char path[512];
+    highscore_path(path, sizeof path);
+    if (!path[0]) return;
+
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    fprintf(f, "%d\n", v);
+    fclose(f);
+}
+
 void game_init(Game *g)
 {
     memset(g, 0, sizeof *g);
@@ -129,6 +182,11 @@ void game_init(Game *g)
     wave_init(&g->wave);
     stars_init();
     game_restart(g);
+
+    /* After game_restart rather than before: a restart is a new game, not a
+       new machine, so it leaves the high score alone - which means this is the
+       one place it can be set. */
+    g->high_score = highscore_load();
 }
 
 void game_restart(Game *g)
@@ -155,6 +213,13 @@ void game_restart(Game *g)
     g->bonus_hits  = 0;
     g->bonus_award = 0;
     g->finished    = false;
+
+    g->next_life      = FIRST_EXTRA_LIFE;
+    g->extra_msg      = 0;
+    g->shots_fired    = 0;
+    g->shots_hit      = 0;
+    g->results        = 0;
+    g->results_armed  = false;
 
     fx_reset(&g->fx);
     start_stage(g);
@@ -263,6 +328,29 @@ static void kill_player(Game *g)
 
 /* Player shots against the wave. A shot is spent on the first thing it
    touches, including a boss that survives the hit. */
+/* Everything that adds to the score goes through here, so the extra-fighter
+   check and the running high score cannot be forgotten at a new call site.
+   The award loops rather than testing once: a perfect bonus round pays 10,000
+   in a single go and could otherwise step straight over a threshold. */
+static void add_score(Game *g, int n)
+{
+    g->score += n;
+
+    while (g->score >= g->next_life) {
+        ++g->player.lives;
+        g->next_life = (g->next_life == FIRST_EXTRA_LIFE)
+                     ? EXTRA_LIFE_EVERY
+                     : g->next_life + EXTRA_LIFE_EVERY;
+        g->extra_msg = EXTRA_MSG_TICKS;
+        if (g->trace) {
+            printf("tick %d: extra fighter at %d, now %d in reserve, next at %d\n",
+                   g->tick, g->score, g->player.lives - 1, g->next_life);
+        }
+    }
+
+    if (g->score > g->high_score) g->high_score = g->score;
+}
+
 static void collide_shots(Game *g)
 {
     for (int i = 0; i < MAX_SHOTS; ++i) {
@@ -280,8 +368,9 @@ static void collide_shots(Game *g)
             bool killed = wave_hit(&g->wave, e, &score, &popup);
 
             sh->alive = false;
+            ++g->shots_hit;   /* a boss that survives the hit still counts */
             if (killed) {
-                g->score += score;
+                add_score(g, score);
                 fx_blast_enemy(&g->fx, at);
                 if (popup > 0) fx_score(&g->fx, at, popup);
 
@@ -394,6 +483,7 @@ static void spawn_shot(Game *g, float x)
         g->shots[i].alive = true;
         g->shots[i].pos.x = x;
         g->shots[i].pos.y = (float)(PLAYER_Y - 8);
+        ++g->shots_fired;
         return;
     }
 }
@@ -415,6 +505,7 @@ void game_update(Game *g, const Uint8 *keys)
     ++g->tick;
     stars_update();
     fx_update(&g->fx);
+    if (g->extra_msg > 0) --g->extra_msg;
 
     /* Shots fly regardless of what else the game is doing. This has to sit
        above the early returns below: when it lived after them, a shot in the
@@ -431,14 +522,36 @@ void game_update(Game *g, const Uint8 *keys)
     if (g->game_over > 0) {
         wave_update(&g->wave, g->player.x);
         if (--g->game_over == 0) {
+            g->results       = RESULTS_TICKS;
+            g->results_armed = false;
+            highscore_save(g->high_score);
+        }
+        return;
+    }
+
+    /* The results screen. The board is frozen behind it rather than still
+       flying: the game is over, and a wave carrying on underneath the numbers
+       reads as though it were not.
+
+       Fire cuts it short, but only once it has been let go of first. Without
+       that, holding the trigger as the last fighter dies - which is exactly
+       what a player is doing at that moment - would skip the screen before it
+       had drawn a single frame. */
+    if (g->results > 0) {
+        bool firing = keys && keys[SDL_SCANCODE_SPACE];
+        if (!firing) g->results_armed = true;
+        else if (g->results_armed) g->results = 1;
+
+        if (--g->results == 0) {
             g->finished = true;
             if (g->trace) {
-                printf("tick %d: game over, score %d, stage %d\n",
-                       g->tick, g->score, g->stage);
+                printf("tick %d: game over, score %d, stage %d, %d of %d shots hit\n",
+                       g->tick, g->score, g->stage, g->shots_hit, g->shots_fired);
             }
         }
         return;
     }
+
     if (g->finished) return;   /* held until someone restarts or leaves */
 
     /* Between stages: hold briefly on an empty screen, then send in the next
@@ -535,7 +648,7 @@ void game_update(Game *g, const Uint8 *keys)
         if (wave_is_challenge(&g->wave)) {
             g->bonus_hits  = wave_challenge_hits(&g->wave);
             g->bonus_award = (g->bonus_hits >= MAX_ENEMIES) ? CHALLENGE_PERFECT : 0;
-            g->score += g->bonus_award;
+            add_score(g, g->bonus_award);
             if (g->trace) {
                 printf("tick %d: bonus round over - %d of %d caught, bonus %d\n",
                        g->tick, g->bonus_hits, MAX_ENEMIES, g->bonus_award);
@@ -568,9 +681,60 @@ void game_update(Game *g, const Uint8 *keys)
 
 /* ------------------------------------------------------------------- draw */
 
+/* Galaga's end-of-game screen: how much was fired, how much of it landed, and
+   the ratio between them. Drawn on an empty sky rather than over the board,
+   because the game is over and the numbers are the whole point of the screen.
+   The ratio is what the arcade actually put up, and it is a more honest
+   summary of a run than the score - a player who reached stage 8 by spraying
+   and one who reached it by aiming score much the same. */
+static void draw_results(Gfx *gfx, const Game *g)
+{
+    char buf[40];
+    int  y = 84;
+
+    const char *title = "-RESULTS-";
+    font_draw_scaled(gfx, (GAME_W - font_width_scaled(title, 2.0f)) / 2,
+                     (float)(y - 30), YELLOW, title, 2.0f);
+
+    /* Label left, value right, on a pair of columns rather than centred: the
+       three numbers line up under one another and can be compared at a
+       glance, which centring each line separately would lose. */
+    const int LX = 30, RX = GAME_W - 30;
+
+    snprintf(buf, sizeof buf, "%d", g->shots_fired);
+    font_draw(gfx, LX, y, WHITE, "SHOTS FIRED");
+    font_draw(gfx, RX - font_width(buf), y, CYAN, buf);
+    y += 16;
+
+    snprintf(buf, sizeof buf, "%d", g->shots_hit);
+    font_draw(gfx, LX, y, WHITE, "NUMBER OF HITS");
+    font_draw(gfx, RX - font_width(buf), y, CYAN, buf);
+    y += 16;
+
+    /* Fired can be zero - a fighter can be lost without ever shooting - and a
+       ratio of nothing out of nothing is 0, not a divide by zero. */
+    int pct10 = g->shots_fired > 0
+              ? (g->shots_hit * 1000 + g->shots_fired / 2) / g->shots_fired
+              : 0;
+    snprintf(buf, sizeof buf, "%d.%d %%", pct10 / 10, pct10 % 10);
+    font_draw(gfx, LX, y, WHITE, "HIT-MISS RATIO");
+    font_draw(gfx, RX - font_width(buf), y, YELLOW, buf);
+
+    snprintf(buf, sizeof buf, "SCORE %d", g->score);
+    font_draw(gfx, (GAME_W - font_width(buf)) / 2, y + 40, WHITE, buf);
+
+    if (g->score >= g->high_score && g->score > 0) {
+        const char *best = "NEW HIGH SCORE";
+        font_draw(gfx, (GAME_W - font_width(best)) / 2, y + 54, YELLOW, best);
+    }
+}
+
 void game_draw(Gfx *gfx, const Game *g)
 {
     stars_draw(gfx);
+
+    if (g->results > 0) { draw_results(gfx, g); return; }
+
     wave_draw(gfx, &g->wave);
 
     for (int i = 0; i < MAX_SHOTS; ++i) {
@@ -599,12 +763,19 @@ void game_draw(Gfx *gfx, const Game *g)
 
     fx_draw(gfx, &g->fx);
 
-    /* HUD. The score uses the debug font because the sheet carries no
-       alphabet - only the boss score values, which are sprites. */
+    /* HUD: the player's score on the left, the best the machine has seen in
+       the middle, the stage on the right - the arcade's arrangement. */
     char buf[32];
     font_draw(gfx, 4, 2, WHITE, "1UP");
     snprintf(buf, sizeof buf, "%d", g->score);
     font_draw(gfx, 4, 10, YELLOW, buf);
+
+    {
+        const char *hs = "HIGH SCORE";
+        font_draw(gfx, (GAME_W - font_width(hs)) / 2, 2, RED, hs);
+        snprintf(buf, sizeof buf, "%d", g->high_score);
+        font_draw(gfx, (GAME_W - font_width(buf)) / 2, 10, YELLOW, buf);
+    }
 
     if (wave_is_challenge(&g->wave)) {
         snprintf(buf, sizeof buf, "BONUS %d", g->stage);
@@ -648,6 +819,15 @@ void game_draw(Gfx *gfx, const Game *g)
                 ++drawn;
             }
         }
+    }
+
+    /* The extra fighter announces itself low on the screen, beside the spare
+       ships it just added to, rather than in the middle of the play area. On
+       the arcade this is a jingle; there is no sound yet, so without something
+       on screen the reward would happen silently. */
+    if (g->extra_msg > 0) {
+        const char *msg = "EXTRA FIGHTER";
+        font_draw(gfx, (GAME_W - font_width(msg)) / 2, GAME_H - 24, YELLOW, msg);
     }
 
     if (g->game_over > 0) {

@@ -64,6 +64,12 @@ G(SEG_GT)    { 0.6f,0.6f, 3.4f,3,  3.4f,3, 0.6f,5.4f };
 G(SEG_PLUS)  { 0.6f,3, 3.4f,3,  2,1.6f, 2,4.4f };
 G(SEG_STAR)  { 2,1.2f, 2,4.8f,  0.6f,2, 3.4f,4,  3.4f,2, 0.6f,4 };
 
+/* Percent, for the results screen. The two rings are strokes rather than
+   little boxes: at five pixels wide a drawn ring closes up into a blob
+   anyway, so a short stroke says the same thing with a third of the
+   segments. */
+G(SEG_PCT)   { 4,0.4f, 0,5.6f,  0.7f,0.8f, 0.7f,1.7f,  3.3f,4.3f, 3.3f,5.2f };
+
 typedef struct {
     char         ch;
     int          segs;      /* segment count, four floats each */
@@ -86,7 +92,7 @@ static const Glyph GLYPHS[] = {
     GLYPH('-', SEG_DASH),  GLYPH('.', SEG_DOT),   GLYPH(',', SEG_COMMA),
     GLYPH(':', SEG_COLON), GLYPH('/', SEG_SLASH), GLYPH('(', SEG_LPAR),
     GLYPH(')', SEG_RPAR),  GLYPH('<', SEG_LT),    GLYPH('>', SEG_GT),
-    GLYPH('+', SEG_PLUS),  GLYPH('*', SEG_STAR),
+    GLYPH('+', SEG_PLUS),  GLYPH('*', SEG_STAR),  GLYPH('%', SEG_PCT),
 };
 
 static const Glyph *s_index[128];

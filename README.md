@@ -42,7 +42,8 @@ build is `/W4` and currently warning-free; the count exists because warnings
 scroll off the top and a build that only says "OK" reads as clean when it is
 not.
 
-Run it from anywhere; it reads no files:
+Run it from anywhere; it loads no assets. The one file it touches is the high
+score, which lives wherever `SDL_GetPrefPath` says user data belongs:
 
 ```bash
 build\claudaga.exe
@@ -532,6 +533,50 @@ at zero, so it is also motionless while the wave is still flying in.
 slots, taken from the enemies rather than from the offset: it reads -10.0 to
 +10.0.
 
+## Scoring, and what a run is worth
+
+Kills pay on the arcade's scale, and a Boss Galaga killed mid-dive pays for the
+company it kept. On top of that sit three things that make a run mean something
+beyond the current stage.
+
+**Extra fighters** arrive on the arcade's default schedule: the first at 20,000
+points, the second at 70,000, and one more every 70,000 after that. The award
+loops rather than testing a single threshold, because a perfect bonus round pays
+10,000 in one go and could otherwise step straight over one. Every path that
+adds to the score goes through a single `add_score`, which is what makes it
+impossible to add points at a new call site and quietly forget the check.
+Verified by tracing a long run: the awards land at 20,080 and at exactly 70,000,
+with the next threshold moving to 140,000. The spare-ship row only holds five,
+so past that the count keeps rising and the display does not.
+
+**The high score** sits centred at the top of the HUD, between the player's
+score and the stage, the way the cabinet arranges it. It outlives the process:
+it is the one file this game touches, written wherever `SDL_GetPrefPath` says
+user data belongs rather than next to the executable, which is often somewhere
+unwritable. Every failure reading or writing it is silent on purpose — a game
+that will not start because it could not read a high score is a worse game than
+one that forgets. It is loaded once in `game_init` and deliberately *after* the
+first `game_restart`, since a restart is a new game rather than a new machine.
+
+**The results screen** ends a game the way the arcade does — shots fired, hits
+landed, and the ratio between them — which needs the misses counted too, so the
+tally is taken at the muzzle rather than at the target. A boss that survives a
+hit still counts as a hit. It is a more honest summary of a run than the score
+is: a player who reached stage 8 by spraying and one who reached it by aiming
+score about the same, and only this tells them apart.
+
+The board freezes behind the panel rather than carrying on, because a wave still
+flying underneath the numbers reads as though the game were not over. Fire cuts
+the screen short, but only once it has been released first — without that,
+holding the trigger as the last fighter dies, which is exactly what a player is
+doing at that moment, would skip the screen before it drew a frame. The headless
+harness holds fire permanently, which verifies that guard and only that guard;
+the skip itself is exercised by hand.
+
+Adding the screen turned up one thing missing from the stroke font, which had no
+`%`. It has one now — the two rings are short strokes rather than drawn boxes,
+since at five pixels wide a ring closes into a blob anyway.
+
 ## Challenging stages
 
 Every fourth stage from the third - 3, 7, 11 - is a bonus round. Forty flyers
@@ -601,8 +646,5 @@ to *behaves like Galaga*.
 There is no sound at all, which is the largest single absence — the entry march,
 the capture siren and the dual-fighter fanfare are a great deal of what Galaga
 sounds like, and the Options screen has nothing to configure until they exist.
-No controller support either; the fighter is keyboard-only.
-
-Scoring is missing its meta layer: no extra life at 20,000 points, no high
-score, and no end-of-game hit-ratio screen — which needs shots fired and hits
-landed counted, and neither is.
+No controller support either; the fighter is keyboard-only. Those two are the
+list.
