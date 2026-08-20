@@ -1,17 +1,17 @@
 # Claudaga
 
-A Galaga clone in C99 on SDL2, built with MSVC. The attack wave flies a
-scripted entry into formation and then attacks — enemies dive, fire back, leave
+A Galaga clone in C99 on SDL2, built with MSVC. Every pixel it draws is
+generated — polygons for the artwork, strokes for the text, per-frame geometry
+for the explosions and the tractor beam. It loads no images and ships no
+artwork.
+
+The attack wave flies a scripted entry into formation and then attacks — enemies dive, fire back, leave
 the screen and come round again. Shots kill, collisions kill, the score counts,
 and clearing a wave starts the next stage.
 
 A Boss Galaga will drop out of formation and try to take your fighter with a
 tractor beam; shoot it and you get the fighter back as a second hull. Every
 fourth stage from the third is a challenging stage.
-
-Everything that flies is **vector artwork**, drawn as coloured triangles rather
-than blitted from a sheet. The game renders at whatever size the window is, the
-flyers turn to any angle, and it needs no sprite sheet to run.
 
 ## Build and run
 
@@ -22,10 +22,10 @@ cloning:
 tools\fetch_deps.bat
 ```
 
-That pulls SDL2 2.32.10 and stb_image.h into `third_party/`. Both versions are
-pinned, and SDL2 in particular ships prebuilt `.lib` and `.dll` files, so an
-unplanned upgrade would change what actually links. Re-running it is harmless -
-it skips anything already there. Then:
+That pulls SDL2 2.32.10 into `third_party/`. The version is pinned: SDL2 ships
+prebuilt `.lib` and `.dll` files, so an unplanned upgrade would change what
+actually links. Re-running it is harmless — it skips anything already there.
+Then:
 
 ```bash
 build.bat
@@ -42,7 +42,7 @@ build is `/W4` and currently warning-free; the count exists because warnings
 scroll off the top and a build that only says "OK" reads as clean when it is
 not.
 
-Run it from the project root, since the sheet is loaded by relative path:
+Run it from anywhere; it reads no files:
 
 ```bash
 build\claudaga.exe
@@ -57,7 +57,6 @@ cycles to the game and the three tools behind it.
 | Play | `←` `→` move, `Space` fire, `R` restart, `P` show paths and headings, `A` toggle attacks |
 | Shape browser | the vector artwork and the font, at a size where they can be judged |
 | Pose check | `←` `→` change shape |
-| Sprite browser | `←` `→` page the original arcade sheet — reference only |
 
 `Esc` always heads back towards the menu and never ends the process: out of
 Options first, then out of whatever view is up. The only ways out are the QUIT
@@ -69,9 +68,9 @@ it decide, which is how the menu gets a look in. A headless run has nobody to
 show a menu to, so `--at` starts a fresh game instead; both go through the same
 function, so the two cannot drift apart.
 
-Flags: `--title` / `--scene` / `--pose` / `--shapes` / `--browser` pick a
-starting view — and `--at` or `--stats` without one implies the game, since
-there is nothing to fast-forward on a menu. Others: `--page N` and `--subject N`
+Flags: `--title` / `--scene` / `--pose` / `--shapes` pick a starting view — and
+`--at` or `--stats` without one implies the game, since there is nothing to
+fast-forward on a menu. Others: `--page N` and `--subject N`
 pick within it, `--scale N` sets the window zoom (default 3), `--paths` turns on
 the path overlay, `--at TICK` fast-forwards the simulation before the first
 frame, `--shot out.bmp` renders one frame and exits, `--stats N` runs the wave
@@ -106,20 +105,17 @@ entirely for that reason.
 ```
 src/
   common.h      screen geometry, Vec2, heading constants
-  gfx.*         window, renderer, PNG loading, blitting, screenshots
+  gfx.*         window, renderer, screenshots
   shape.*       vector artwork: the renderer and the transform
   shapes.c      the artwork itself, as polygons
   font.*        stroke font: glyphs as line segments, drawn with thickness
-  atlas.*       the old sheet's rects - reference for the browser only
   path.*        Catmull-Rom splines resampled by arc length
   formation.*   slots, entry flights, attacks, formation flight, state machine
   fx.*          explosion animations and the score popups
   game.*        the fighter, its shots, the starfield, collision, score, stages
   main.c        the loop and the three views
-assets/       galaga_sheet.png
-third_party/  SDL2 2.32.10 (VC dev libs), stb_image.h - fetched, not committed
-tools/        fetch_deps.bat    - downloads the two dependencies
-              inspect_sheet.py  - re-derives sprite coordinates from the sheet
+third_party/  SDL2 2.32.10 (VC dev libs) - fetched, not committed
+tools/        fetch_deps.bat - downloads SDL2
 ```
 
 The picture is 224x288, the arcade's 288x224 raster turned upright for a
@@ -184,49 +180,35 @@ cheaper than mitring the joint and, at this size, indistinguishable from it.
 The shape browser draws the whole alphabet, which is the only practical way to
 judge glyphs.
 
-## The sprite sheet
+## Where the artwork came from
 
-The game no longer needs it. Nothing in play is drawn from it, it is not
-required to start — the browser view simply switches itself off if it is absent
-— and the project can therefore ship without carrying somebody else's artwork.
-It is kept for now because it is still the reference for the parts not yet
-rebuilt: the tractor beam, the sixteen challenging-stage flyers, and the stage
-flags.
+The project began by indexing a ripped arcade sprite sheet — a 458x256 palette
+PNG, thirty groups of frames, coordinates derived from the image rather than
+eyeballed. All of it has since been replaced by generated geometry, and the
+sheet, its atlas, the browser that displayed it and the image loader that read
+it have all been removed. Nothing in the repository is anyone else's artwork,
+and nothing loads a file to draw with.
 
-`assets/galaga_sheet.png` is the Spriters Resource rip credited on the sheet
-itself to 125scratch, xdonthave1xx, and Goemar. It is a 458x256 palette PNG.
-Two palette entries matter: index 0 is the grey gutter between blocks, and
-index 1 is the black the hardware used as transparent, which
-`gfx_load_texture` punches out to alpha 0 on load.
+What the sheet held and what replaced it:
 
-Most art sits on a regular grid — a 1px border, then 16x16 cells every 18px —
-which is what the `GX`/`GY` macros in `atlas.c` compute. The exceptions keep
-their own spacing: the 32x32 explosions step 34px, the 48x80 tractor beam steps
-50px, and the HUD art is not on any grid at all, so those rects are measured ink
-bounds.
+| Sheet group | Now |
+| --- | --- |
+| Fighter, and the captured red one | one shape, two palettes |
+| Boss Galaga, two colour states | one shape, two palettes |
+| Butterfly, Bee | shapes of their own |
+| Player and enemy explosions | procedural shards |
+| Tractor beam | a procedural cone |
+| Player and enemy missiles | shapes of their own |
+| Score values | drawn as text |
+| Stage flags | one shield, six palettes |
+| Life icon | the fighter, scaled down |
+| Sixteen challenging-stage flyers | four shapes, cycled |
 
-| Group | Frames | Notes |
-| --- | --- | --- |
-| Fighter, and the captured red one | 7 each | pure rotation |
-| Boss Galaga, two colour states | 8 each | it takes two hits and swaps palette in between |
-| Butterfly (Goei), Bee (Zako) | 8 each | |
-| Challenging-stage flyers | 6–8 each | sixteen of them, unnamed on the sheet, so numbered `BONUS_1`…`BONUS_16` |
-| Player explosion | 4 | 32x32 |
-| Enemy explosion | 5 | 32x32 |
-| Tractor beam | 3 | 48x80 |
-| Player missile | 1 | |
-| Enemy missile | 8 | one per heading |
-| Score values | 8 | 150, 400, 800, 1000, 1500, 1600, 2000, 3000 |
-| Stage flags | 6 | 1, 5, 10, 20, 30, 50 |
-| Life icon | 1 | |
+Only the last row is not one for one, and that is a choice rather than a debt:
+the arcade fields sixteen sets, this fields four, and adding more means drawing
+more shapes.
 
-The enemy missiles are laid out as a 3x3 rose whose cells point the way the shot
-travels, so `MissileDir` is the sheet's own geometry rather than an invention.
-The middle of that rose is not a ninth heading — it is the player's shot.
-
-`atlas.c` is hand-written rather than generated. `tools/inspect_sheet.py`
-re-derives the coordinates from the image so the table can be checked; run it if
-the sheet is ever replaced.
+The designs are loosely after the originals rather than traced from them.
 
 ## Rotation
 
@@ -346,11 +328,10 @@ and 160. A Boss Galaga survives the first hit and changes colour, and is worth
 150 parked. Killed mid-dive it pays for the company it kept — 400 alone, 800
 with one escort still flying, 1600 with both — and because a dive group shares
 one path, counting the survivors is just a matter of asking who else is on it.
-Those four values are exactly the boss-tier sprites the sheet carries, so the
-kill pops the real artwork up where the enemy died rather than drawn text.
+The value is drawn where the enemy died.
 
-Divers fire back and the missile picks its sprite from the direction rose by
-velocity. Parked enemies never shoot.
+Divers fire back, the missile turning to point along its velocity. Parked
+enemies never shoot.
 
 Aim is deliberately *not* a straight line to the fighter, and this is a fairness
 rule rather than a stylistic one. The fighter is pinned to a single row and can
@@ -360,11 +341,8 @@ almost exactly that, at up to 78 degrees off vertical. Two rules keep a shot
 fair: the enemy must be some way above the fighter's row to take one, and the
 aim is clamped into a 45-degree cone about straight down, so every missile has
 enough downward travel to step aside from. `--stats` reports the steepest shot
-fired over a run; it reads 37 degrees with the rules in and 78 without.
-
-One consequence: with the cone in place only the south, south-east and
-south-west frames of the direction rose ever get used in play. The rest are
-still indexed, and still visible in the sprite browser.
+fired over a run; it reads 45 degrees with the rules in - the clamp binding at
+exactly its ceiling - and 78 without.
 
 Clearing every enemy pauses briefly and sends in the next stage. Nothing else
 about a stage changes yet — the attack rate and speeds are fixed.
@@ -500,17 +478,10 @@ game does, and the per-slot mix lands at boss 8.8 dives, butterfly 7.9, bee 4.5
 
 ## Things assumed, not verified
 
-- **The two Boss Galaga colours are its damage states, green first.** The
-  shapes are identical and only the palette differs, which fits a two-hit
-  enemy, but the sheet does not say which colour is the damaged one. The game
-  currently starts them green and turns them blue on the first hit; if that is
-  backwards it is a one-line swap in `wave_hit`.
-- **Frames 6 and 7 are a wing-flap pair.** Both are verifiably north-facing
-  poses; that the game alternates them in formation is the natural reading, not
-  something the sheet states.
-- **The challenging-stage flyers are numbered, not named**, and the six-frame
-  rows among them are treated as a shorter sweep over the same quadrant. None
-  are used in a stage yet, so that reading is untested.
+- **A damaged Boss Galaga turns from green to blue.** The sheet carried two
+  palettes for the same shape, which fits a two-hit enemy, but never said which
+  was the damaged one. Now that the colours are ours the question is only which
+  reads better; swapping them is a one-line change in the draw.
 - **The entry paths are authored by eye.** They reproduce the shape and feel of
   Galaga's entries — the streams, the splits, the loops — but they are not the
   arcade's path tables, and the timings are tuned to look right rather than
@@ -530,13 +501,6 @@ the hardware did. Worth knowing if the goal ever shifts from *looks like Galaga*
 to *behaves like Galaga*.
 
 ## Next
-
-**Nothing is owed to the sheet any more.** The tractor beam, the
-challenging-stage flyers and the stage flags are all shapes, and the game starts
-and plays with the file absent. `assets/` and `atlas.*` can be deleted whenever
-you like, taking the copyright caveat with them; they are kept only because the
-browser is a convenient way to look at the original when designing something
-new.
 
 Mechanically: the formation's side-to-side sway, and a difficulty ramp so the
 attack rate, dive speed and number of simultaneous divers climb with the stage

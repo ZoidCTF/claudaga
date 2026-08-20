@@ -1,11 +1,15 @@
 /* Claudaga.
  *
- * Opens on the title screen; START runs the game. Behind play on Tab sit three
- * tools: the shape browser shows the vector artwork and the font at a size
- * where they can be judged, the pose check drives a shape through a full
- * circle of headings, and the sprite browser shows the original arcade sheet
- * the designs were drawn from. That last one is reference material only - the
- * game does not read the sheet and does not need it present. */
+ * Opens on the title screen; START runs the game. Behind play on Tab sit two
+ * tools: the shape browser, which shows the vector artwork and the font at a
+ * size where they can be judged, and the pose check, which drives a shape
+ * through a full circle of headings.
+ *
+ * Nothing here loads an image. The project began by indexing a ripped arcade
+ * sprite sheet; every one of those thirty groups is now generated - polygons
+ * for the artwork, strokes for the text, per-frame geometry for the explosions
+ * and the tractor beam - so the sheet, its atlas and the browser that displayed
+ * it have all gone. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,12 +17,9 @@
 #include <string.h>
 
 #include "gfx.h"
-#include "atlas.h"
 #include "font.h"
 #include "shape.h"
 #include "game.h"
-
-#define SHEET_PATH "assets/galaga_sheet.png"
 
 /* A headless fast-forward starts a fresh game rather than stopping on the
    menu. Flip this to exercise the interactive path through --at. */
@@ -29,9 +30,7 @@ static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color DIM    = { 144, 144, 160, 255 };
 
 /* The title is where the game opens; the tools sit behind play on Tab. */
-typedef enum {
-    VIEW_TITLE, VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_BROWSER, VIEW_COUNT
-} View;
+typedef enum { VIEW_TITLE, VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_COUNT } View;
 
 /* Options has nothing in it yet, so it is reachable from the title rather than
    sitting in the Tab rotation. */
@@ -164,88 +163,6 @@ static void shapes_draw(Gfx *g, int tick)
     font_draw(g, 4, GAME_H - 9, CYAN, "TAB VIEW  ESC QUIT");
 }
 
-/* ---------------------------------------------------------------- browser */
-
-#define BROWSER_TOP    12
-#define BROWSER_BOTTOM (GAME_H - 12)
-#define LABEL_GAP      2
-#define ENTRY_GAP      4
-
-/* Height one sprite group needs: its label, then its tallest frame. */
-static int entry_height(SpriteId id)
-{
-    const Sprite *s = atlas_get(id);
-    int art = s->count > 0 ? s->frame[0].h : 0;
-    return FONT_H + LABEL_GAP + art;
-}
-
-/* Walks the sprite list splitting it into screenfuls. Returns the page count
-   and fills `starts` with the first sprite on each page. */
-static int paginate(int *starts, int max_pages)
-{
-    int pages = 0, y = BROWSER_TOP;
-    starts[0] = 0;
-    for (int id = 0; id < SPR_COUNT; ++id) {
-        int h = entry_height((SpriteId)id);
-        if (y + h > BROWSER_BOTTOM && id > starts[pages]) {
-            if (++pages >= max_pages) return max_pages;
-            starts[pages] = id;
-            y = BROWSER_TOP;
-        }
-        y += h + ENTRY_GAP;
-    }
-    return pages + 1;
-}
-
-static void browser_draw(Gfx *g, int page, int page_count, const int *starts,
-                         int tick, bool have_sheet)
-{
-    if (!have_sheet) {
-        font_draw(g, 4, 2, YELLOW, "SPRITE ATLAS");
-        font_draw(g, 4, 16, DIM, "NO SHEET LOADED - NOTHING TO SHOW");
-        font_draw(g, 4, 26, DIM, "THE GAME DOES NOT NEED IT");
-        font_draw(g, 4, GAME_H - 9, CYAN, "TAB VIEW  ESC QUIT");
-        return;
-    }
-
-    char head[64];
-    snprintf(head, sizeof head, "SPRITE ATLAS  PAGE %d/%d", page + 1, page_count);
-    font_draw(g, 4, 2, YELLOW, head);
-
-    int first = starts[page];
-    int last  = (page + 1 < page_count) ? starts[page + 1] : SPR_COUNT;
-
-    int y = BROWSER_TOP;
-    for (int id = first; id < last; ++id) {
-        const Sprite *s = atlas_get((SpriteId)id);
-
-        char label[64];
-        snprintf(label, sizeof label, "%s %d", s->name, s->count);
-        font_draw(g, 4, y, DIM, label);
-
-        /* Frames run left to right at their natural size. The widest group on
-           the sheet is the 5-frame enemy blast at 170px, so nothing clips. */
-        int x = 4;
-        for (int f = 0; f < s->count; ++f) {
-            gfx_blit(g, &s->frame[f], x, y + FONT_H + LABEL_GAP);
-            x += s->frame[f].w + 2;
-        }
-
-        /* A lone copy on the right cycles through the frames, which makes the
-           animations and the rotation order easy to read at a glance. */
-        if (s->count > 1) {
-            const SDL_Rect *cur = atlas_frame((SpriteId)id, tick / 8);
-            if (x + cur->w + 6 <= GAME_W) {
-                gfx_blit(g, cur, GAME_W - cur->w - 4, y + FONT_H + LABEL_GAP);
-            }
-        }
-
-        y += entry_height((SpriteId)id) + ENTRY_GAP;
-    }
-
-    font_draw(g, 4, GAME_H - 9, CYAN, "TAB VIEW  < > PAGE  ESC QUIT");
-}
-
 /* ------------------------------------------------------------- pose check */
 
 /* Draws one flyer at headings all the way round a circle, each copy placed in
@@ -318,8 +235,8 @@ static void play_tick(Game *game, const Uint8 *keys, bool to_title,
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: claudaga [--title] [--scene] [--shapes] [--pose] [--browser]\n"
-            "                [--page N] [--subject N] [--scale N]\n"
+            "usage: claudaga [--title] [--scene] [--shapes] [--pose]\n"
+            "                [--subject N] [--scale N]\n"
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "\n"
@@ -333,7 +250,6 @@ int main(int argc, char **argv)
     bool        view_set  = false;
     bool        options   = false;
     int         menu_sel  = MENU_START;
-    int         page      = 0;
     int         subject   = 0;
     int         scale     = 3;
     int         warmup    = 0;
@@ -348,9 +264,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--scene"))   { view = VIEW_PLAY;    view_set = true; }
         else if (!strcmp(argv[i], "--pose"))    { view = VIEW_POSE;    view_set = true; }
         else if (!strcmp(argv[i], "--shapes"))  { view = VIEW_SHAPES;  view_set = true; }
-        else if (!strcmp(argv[i], "--browser")) { view = VIEW_BROWSER; view_set = true; }
         else if (!strcmp(argv[i], "--title"))   { view = VIEW_TITLE;   view_set = true; }
-        else if (!strcmp(argv[i], "--page")    && i + 1 < argc)  page = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--subject") && i + 1 < argc)  subject = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--scale")   && i + 1 < argc)  scale = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--at")      && i + 1 < argc)  warmup = atoi(argv[++i]);
@@ -371,27 +285,6 @@ int main(int argc, char **argv)
 
     Gfx g;
     if (!gfx_init(&g, "Claudaga", scale)) return 1;
-
-    atlas_init();
-
-    /* The sheet is no longer needed to play: everything in the game is drawn
-       from vector shapes now, and it survives only so the browser can show the
-       artwork this was originally built from. Missing it is therefore a note,
-       not a failure - which is what lets the project ship without carrying
-       somebody else's sprite sheet. */
-    bool have_sheet = gfx_load_texture(&g, &g.sheet, SHEET_PATH, true);
-    if (have_sheet) {
-        printf("sheet %dx%d, %d sprite groups\n", g.sheet.w, g.sheet.h, (int)SPR_COUNT);
-    } else {
-        printf("no sheet at " SHEET_PATH " - browser view disabled, "
-               "everything else is unaffected\n");
-        if (view == VIEW_BROWSER) view = VIEW_SHAPES;
-    }
-
-    int starts[32];
-    int page_count = paginate(starts, ARRAY_COUNT(starts));
-    if (page >= page_count) page = page_count - 1;
-    if (page < 0) page = 0;
 
     static Game game;   /* several hundred KB of baked paths; not stack-sized */
     game_init(&game);
@@ -492,7 +385,6 @@ int main(int argc, char **argv)
                     break;
                 case SDLK_LEFT:
                 case SDLK_PAGEUP:
-                    if (view == VIEW_BROWSER && page > 0) --page;
                     if (view == VIEW_POSE) {
                         subject = (subject + ARRAY_COUNT(POSE_SUBJECTS) - 1)
                                 % ARRAY_COUNT(POSE_SUBJECTS);
@@ -500,7 +392,6 @@ int main(int argc, char **argv)
                     break;
                 case SDLK_RIGHT:
                 case SDLK_PAGEDOWN:
-                    if (view == VIEW_BROWSER && page < page_count - 1) ++page;
                     if (view == VIEW_POSE) {
                         subject = (subject + 1) % ARRAY_COUNT(POSE_SUBJECTS);
                     }
@@ -528,9 +419,7 @@ int main(int argc, char **argv)
         else if (view == VIEW_TITLE)  title_draw(&g, menu_sel, tick);
         else if (view == VIEW_PLAY)   game_draw(&g, &game);
         else if (view == VIEW_POSE)   pose_draw(&g, subject);
-        else if (view == VIEW_SHAPES) shapes_draw(&g, tick);
-        else                          browser_draw(&g, page, page_count, starts,
-                                                   tick, have_sheet);
+        else                          shapes_draw(&g, tick);
 
         if (shot_path) {
             gfx_screenshot(&g, shot_path);

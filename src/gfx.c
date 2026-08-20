@@ -2,11 +2,6 @@
 
 #include <stdio.h>
 
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ONLY_PNG
-#define STBI_NO_STDIO_WRITE
-#include "stb_image.h"
-
 bool gfx_init(Gfx *g, const char *title, int scale)
 {
     SDL_memset(g, 0, sizeof(*g));
@@ -50,61 +45,11 @@ bool gfx_init(Gfx *g, const char *title, int scale)
 
 void gfx_shutdown(Gfx *g)
 {
-    gfx_free_texture(&g->sheet);
     if (g->renderer) SDL_DestroyRenderer(g->renderer);
     if (g->window)   SDL_DestroyWindow(g->window);
     g->renderer = NULL;
     g->window   = NULL;
     SDL_Quit();
-}
-
-bool gfx_load_texture(Gfx *g, Texture *out, const char *path, bool colorkey_black)
-{
-    int w, h, channels;
-    stbi_uc *pixels = stbi_load(path, &w, &h, &channels, 4); /* force RGBA */
-    if (!pixels) {
-        fprintf(stderr, "failed to load '%s': %s\n", path, stbi_failure_reason());
-        return false;
-    }
-
-    /* The rip stores the transparent background as opaque black, matching the
-       hardware's palette entry 0. Punch it out so sprites composite properly. */
-    if (colorkey_black) {
-        for (int i = 0; i < w * h; ++i) {
-            stbi_uc *p = &pixels[i * 4];
-            if (p[0] == 0 && p[1] == 0 && p[2] == 0) p[3] = 0;
-        }
-    }
-
-    SDL_Texture *tex = SDL_CreateTexture(g->renderer, SDL_PIXELFORMAT_ABGR8888,
-                                         SDL_TEXTUREACCESS_STATIC, w, h);
-    if (!tex) {
-        fprintf(stderr, "SDL_CreateTexture failed: %s\n", SDL_GetError());
-        stbi_image_free(pixels);
-        return false;
-    }
-
-    SDL_UpdateTexture(tex, NULL, pixels, w * 4);
-    SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
-    stbi_image_free(pixels);
-
-    out->tex = tex;
-    out->w   = w;
-    out->h   = h;
-    return true;
-}
-
-void gfx_free_texture(Texture *t)
-{
-    if (t->tex) SDL_DestroyTexture(t->tex);
-    t->tex = NULL;
-    t->w = t->h = 0;
-}
-
-void gfx_blit(Gfx *g, const SDL_Rect *src, int x, int y)
-{
-    SDL_Rect dst = { x, y, src->w, src->h };
-    SDL_RenderCopy(g->renderer, g->sheet.tex, src, &dst);
 }
 
 bool gfx_screenshot(Gfx *g, const char *path)

@@ -1,10 +1,10 @@
 @echo off
-rem Fetches the two dependencies build.bat expects but the repository does not
-rem carry: the SDL2 development libraries and stb_image.h. Run it once after
-rem cloning, from anywhere - it works out the project root from its own path.
+rem Fetches the one dependency build.bat expects but the repository does not
+rem carry: the SDL2 development libraries. Run it once after cloning, from
+rem anywhere - it works out the project root from its own path.
 rem
-rem Both versions are pinned. SDL2 in particular ships prebuilt .lib and .dll
-rem files, so an unplanned upgrade is a change to what actually links.
+rem The version is pinned. SDL2 ships prebuilt .lib and .dll files, so an
+rem unplanned upgrade is a change to what actually links.
 
 setlocal
 set "ROOT=%~dp0.."
@@ -27,19 +27,6 @@ if not exist "%TAR%" (
 )
 
 if not exist "%TP%" mkdir "%TP%"
-
-rem --- stb_image.h -------------------------------------------------------
-if exist "%TP%\stb_image.h" (
-    echo [deps] stb_image.h already present
-) else (
-    echo [deps] fetching stb_image.h
-    "%CURL%" -fsSL -o "%TP%\stb_image.h" ^
-        https://raw.githubusercontent.com/nothings/stb/master/stb_image.h
-    if errorlevel 1 (
-        echo [deps] ERROR: could not download stb_image.h
-        exit /b 1
-    )
-)
 
 rem --- SDL2 --------------------------------------------------------------
 if exist "%TP%\SDL2\include\SDL.h" (
