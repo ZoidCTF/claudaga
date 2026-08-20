@@ -15,6 +15,11 @@ static const SDL_Color RED    = { 255,  72,  72, 255 };
 #define SHOT_SPEED      4.0f
 #define FIRE_COOLDOWN   12
 #define RESPAWN_TICKS   70
+
+/* How much room the fighter needs before it will come back. The recall sends
+   the divers home, but one already close to the bottom takes a moment to leave,
+   and reappearing inside it costs the next life straight away. */
+#define SPAWN_CLEAR_RADIUS 34.0f
 #define STAGE_PAUSE     120
 #define GAME_OVER_TICKS 240
 
@@ -123,6 +128,7 @@ void game_restart(Game *g)
     g->tick        = 0;
     g->stage_clear = 0;
     g->game_over   = 0;
+    g->last_death_tick = 0;
 
     g->player.x       = GAME_W / 2.0f;
     g->player.alive   = true;
@@ -156,6 +162,22 @@ static void kill_player(Game *g)
     g->player.alive   = false;
     g->player.respawn = RESPAWN_TICKS;
     fx_blast_player(&g->fx, player_pos(g));
+
+    if (g->last_death_tick > 0) {
+        int gap = g->tick - g->last_death_tick;
+        if (g->min_death_gap == 0 || gap < g->min_death_gap) g->min_death_gap = gap;
+        if (g->trace) {
+            printf("tick %d: player died, %d ticks after the last one\n",
+                   g->tick, gap);
+        }
+    }
+    g->last_death_tick = g->tick;
+
+    /* Empty the screen. Everything mid-dive is sent home and the missiles in
+       the air are dropped, so the replacement ship arrives to a clear board
+       rather than into the middle of the attack that just killed it. */
+    wave_recall(&g->wave);
+
     if (--g->player.lives <= 0) g->game_over = GAME_OVER_TICKS;
 }
 
@@ -278,6 +300,9 @@ void game_update(Game *g, const Uint8 *keys)
         return;
     }
 
+    /* No new attacks while there is nobody to attack. */
+    wave_pause_attacks(&g->wave, !g->player.alive);
+
     wave_update(&g->wave, g->player.x);
 
     if (g->player.alive) {
@@ -291,13 +316,17 @@ void game_update(Game *g, const Uint8 *keys)
         if (g->fire_cooldown > 0) --g->fire_cooldown;
         if (keys[SDL_SCANCODE_SPACE] && g->fire_cooldown == 0) fire(g);
     } else {
-        /* Respawn once the countdown has run out *and* the explosion has
-           finished playing, so a fresh ship never appears inside the wreck of
-           the old one. */
+        /* Respawn once the countdown has run out, the explosion has finished
+           playing, and the spot is actually clear. The first keeps a fresh ship
+           from appearing inside the wreck of the old one; the last keeps it
+           from appearing inside whatever is still on its way off the screen. */
         if (g->player.respawn > 0) --g->player.respawn;
-        if (g->player.respawn == 0 && !fx_player_blast_active(&g->fx)) {
+
+        Vec2 spot = { GAME_W / 2.0f, (float)PLAYER_Y };
+        if (g->player.respawn == 0 && !fx_player_blast_active(&g->fx)
+            && wave_area_clear(&g->wave, spot, SPAWN_CLEAR_RADIUS)) {
             g->player.alive = true;
-            g->player.x     = GAME_W / 2.0f;
+            g->player.x     = spot.x;
         }
     }
 

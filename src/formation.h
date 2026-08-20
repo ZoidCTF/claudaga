@@ -132,7 +132,8 @@ typedef struct {
        dodged, so this is the number that says the aim cone is holding. */
     float shot_max_deg;
     bool  show_paths;
-    bool  attacks_enabled;
+    bool  attacks_enabled;   /* the A key; off means never attack        */
+    bool  attacks_paused;    /* transient, while the player is not there */
 } Wave;
 
 void wave_init(Wave *w);       /* builds paths and slots; call once */
@@ -146,6 +147,20 @@ void wave_print_stats(const Wave *w);
 
 /* Every enemy has been shot. */
 bool wave_cleared(const Wave *w);
+
+/* Sends every diver home and clears the air. Called when the player dies: the
+   arcade empties the screen rather than dropping a fresh ship into traffic,
+   and without it you could respawn directly on top of an enemy mid-dive and
+   lose the next life immediately. */
+void wave_recall(Wave *w);
+
+/* While paused no new attack launches. Anything already flying carries on, so
+   the screen drains rather than freezing. */
+void wave_pause_attacks(Wave *w, bool paused);
+
+/* True when nothing that could kill the player is within `radius` of a point -
+   used to hold a respawn until the spot is actually clear. */
+bool wave_area_clear(const Wave *w, Vec2 at, float radius);
 
 /* Drops every missile still in the air. Called when a stage ends: the enemies
    that fired them are gone, and a bullet left hanging would freeze in place

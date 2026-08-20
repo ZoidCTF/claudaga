@@ -49,6 +49,12 @@ typedef struct {
     /* Debug aid: reports the state of each new wave as it is handed out, which
        is the direct way to check a stage really does start clean. */
     bool   trace;
+
+    /* Ticks between consecutive deaths. Respawning on top of something still
+       flying showed up as a gap of almost nothing, so this is the number that
+       says the recall and the spawn check are working. */
+    int    last_death_tick;
+    int    min_death_gap;
 } Game;
 
 void game_init(Game *g);

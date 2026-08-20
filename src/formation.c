@@ -224,6 +224,7 @@ void wave_init(Wave *w)
 
     w->show_paths      = false;
     w->attacks_enabled = true;
+    w->attacks_paused  = false;
 
     /* Seeded once, here rather than in wave_restart, so successive stages get
        different attack patterns while a whole run stays reproducible. */
@@ -528,6 +529,68 @@ static void enemy_fire(Wave *w, const Enemy *e, float player_x)
     }
 }
 
+/* Takes an enemy off whatever it is doing and queues it for the return lane
+   on its own side. Used both when a dive runs out at the bottom of the screen
+   and when the whole wave is recalled.
+
+   Queueing rather than joining the lane straight away matters: a boss and its
+   escorts finish within a few ticks of each other - the escorts share a station
+   and so finish on the very same tick - and starting them all at the head of
+   the same path put them exactly on top of one another the whole way back. A
+   departure slot spaces them out, and does it for any two enemies that happen
+   to coincide. Waiting happens off-screen, where nothing is drawn. */
+static void send_home(Wave *w, Enemy *e)
+{
+    if (e->dive_path >= 0) {
+        dive_path_release(w, e->dive_path);
+        e->dive_path = -1;
+    }
+
+    Vec2 slot = formation_slot_pos(e->slot);
+    int  lane = (slot.x < GAME_W * 0.5f) ? PATH_RETURN_L : PATH_RETURN_R;
+
+    int depart = w->tick;
+    if (w->lane_free[lane] > depart) depart = w->lane_free[lane];
+    w->lane_free[lane] = depart + RETURN_SPACING;
+
+    e->path        = lane;
+    e->launch_tick = depart;
+    e->speed       = ENTRY_SPEED;
+    e->state       = ENEMY_WAITING;
+}
+
+void wave_recall(Wave *w)
+{
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        Enemy *e = &w->enemies[i];
+        if (e->state == ENEMY_DIVING) send_home(w, e);
+    }
+    wave_clear_shots(w);
+}
+
+void wave_pause_attacks(Wave *w, bool paused)
+{
+    w->attacks_paused = paused;
+}
+
+bool wave_area_clear(const Wave *w, Vec2 at, float radius)
+{
+    float r2 = radius * radius;
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        const Enemy *e = &w->enemies[i];
+        if (e->state == ENEMY_DEAD || e->state == ENEMY_WAITING) continue;
+        float dx = e->pos.x - at.x, dy = e->pos.y - at.y;
+        if (dx * dx + dy * dy <= r2) return false;
+    }
+    for (int i = 0; i < MAX_ENEMY_SHOTS; ++i) {
+        const EnemyShot *s = &w->shot[i];
+        if (!s->alive) continue;
+        float dx = s->pos.x - at.x, dy = s->pos.y - at.y;
+        if (dx * dx + dy * dy <= r2) return false;
+    }
+    return true;
+}
+
 void wave_update(Wave *w, float player_x)
 {
     ++w->tick;
@@ -536,7 +599,7 @@ void wave_update(Wave *w, float player_x)
        has to latch: the instant the first enemy leaves its slot the formation
        is no longer complete, so testing it every tick would fire one attack
        and then never another. A non-zero next_attack is that latch. */
-    if (w->attacks_enabled) {
+    if (w->attacks_enabled && !w->attacks_paused) {
         if (w->next_attack == 0 && wave_all_formed(w)) {
             w->next_attack = w->tick + ATTACK_INTERVAL;
         }
@@ -616,29 +679,7 @@ void wave_update(Wave *w, float player_x)
                 /* Off the bottom. Hand the path back and come round again from
                    the top: a return is just another entry, so it re-uses the
                    entering state and, after that, the same join home. */
-                dive_path_release(w, e->dive_path);
-                e->dive_path = -1;
-
-                /* Queue up for the return lane rather than joining it straight
-                   away. A boss and its escorts finish within a few ticks of
-                   each other - the escorts share a station and so finish on the
-                   very same tick - and starting them all at the head of the
-                   same path put them exactly on top of one another the whole
-                   way back. Taking a departure slot spaces them out, and does
-                   it for any two enemies that happen to coincide, not just a
-                   dive group. Waiting happens off-screen, where the enemy is
-                   not drawn. */
-                Vec2 slot = formation_slot_pos(e->slot);
-                int  lane = (slot.x < GAME_W * 0.5f) ? PATH_RETURN_L : PATH_RETURN_R;
-
-                int depart = w->tick;
-                if (w->lane_free[lane] > depart) depart = w->lane_free[lane];
-                w->lane_free[lane] = depart + RETURN_SPACING;
-
-                e->path        = lane;
-                e->launch_tick = depart;
-                e->speed       = ENTRY_SPEED;
-                e->state       = ENEMY_WAITING;
+                send_home(w, e);
             } else {
                 Vec2  here = path_point(dp, path_s);
                 float h    = path_heading(dp, path_s);
