@@ -252,6 +252,47 @@ static const ShapePalette ORB_PAL = {{
     {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
 }};
 
+/* ------------------------------------------------------------------ flags */
+
+/* A shield: broad shoulders, a banded middle, tapering to a point. Small, so
+   it is built to read at about ten pixels across rather than to be looked at. */
+static const Vec2 FLAG_V[] = {
+    /* shield */ {  0.0f, -7.0f }, {  4.6f, -5.6f }, {  4.6f,  2.2f }, {  0.0f,  7.2f },
+    /* crest  */ {  0.0f, -5.4f }, {  2.0f, -4.6f }, {  2.0f, -2.8f }, {  0.0f, -2.2f },
+    /* band   */ {  0.0f, -2.0f }, {  4.4f, -1.6f }, {  4.4f,  0.8f }, {  0.0f,  1.2f },
+    /* point  */ {  0.0f,  3.0f }, {  3.2f,  2.4f }, {  1.9f,  6.4f }, {  0.0f,  6.9f },
+};
+
+static const ShapePoly FLAG_P[] = {
+    {  0, 4, 0, true },   /* shield */
+    {  8, 4, 1, true },   /* band   */
+    { 12, 4, 1, true },   /* point  */
+    {  4, 4, 2, true },   /* crest  */
+};
+
+/* The default is the one-flag; the rest are handed in by the caller. */
+static const ShapePalette FLAG_PAL_1 = {{
+    { 232,  60,  60, 255 }, { 245, 245, 245, 255 }, { 245, 245, 245, 255 },
+    {   0,   0,   0, 255 }, {   0,   0,   0, 255 }, {   0,   0,   0, 255 },
+}};
+
+const int SHAPE_FLAG_VALUE[FLAG_KINDS] = { 50, 30, 20, 10, 5, 1 };
+
+const ShapePalette SHAPE_PAL_FLAG[FLAG_KINDS] = {
+    /* 50 */ {{ { 245, 245, 250, 255 }, { 224,  48,  48, 255 }, { 224,  48,  48, 255 },
+                {0,0,0,255},{0,0,0,255},{0,0,0,255} }},
+    /* 30 */ {{ {  64, 104, 232, 255 }, { 255, 210,  40, 255 }, { 245, 245, 250, 255 },
+                {0,0,0,255},{0,0,0,255},{0,0,0,255} }},
+    /* 20 */ {{ { 200,  56, 200, 255 }, { 255, 210,  40, 255 }, { 255, 210,  40, 255 },
+                {0,0,0,255},{0,0,0,255},{0,0,0,255} }},
+    /* 10 */ {{ {  40, 160, 176, 255 }, { 245, 245, 250, 255 }, { 255, 210,  40, 255 },
+                {0,0,0,255},{0,0,0,255},{0,0,0,255} }},
+    /*  5 */ {{ { 240, 140,  40, 255 }, { 245, 245, 250, 255 }, { 240, 140,  40, 255 },
+                {0,0,0,255},{0,0,0,255},{0,0,0,255} }},
+    /*  1 */ {{ { 232,  60,  60, 255 }, { 245, 245, 245, 255 }, { 245, 245, 245, 255 },
+                {0,0,0,255},{0,0,0,255},{0,0,0,255} }},
+};
+
 /* ------------------------------------------------------------------ table */
 
 static const Shape SHAPES[SHP_COUNT] = {
@@ -265,6 +306,7 @@ static const Shape SHAPES[SHP_COUNT] = {
     { "SCORPION",    SCORPION_V,    SCORPION_P,    (int)ARRAY_COUNT(SCORPION_P),    &SCORPION_PAL    },
     { "DART",        DART_V,        DART_P,        (int)ARRAY_COUNT(DART_P),        &DART_PAL        },
     { "ORB",         ORB_V,         ORB_P,         (int)ARRAY_COUNT(ORB_P),         &ORB_PAL         },
+    { "FLAG",        FLAG_V,        FLAG_P,        (int)ARRAY_COUNT(FLAG_P),        &FLAG_PAL_1      },
 };
 
 const Shape *shape_get(ShapeId id)

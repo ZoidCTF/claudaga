@@ -48,18 +48,22 @@ Run it from the project root, since the sheet is loaded by relative path:
 build\claudaga.exe
 ```
 
-It starts in the game. `Tab` cycles to the three tools behind it and back.
+It opens on the title screen: `↑` `↓` to choose, `Enter` to confirm. `Tab`
+cycles to the game and the three tools behind it.
 
 | View | Keys |
 | --- | --- |
-| Play *(default)* | `←` `→` move, `Space` fire, `R` restart, `P` show paths and headings, `A` toggle attacks |
+| Title *(default)* | `↑` `↓` select, `Enter` confirm, `Esc` quit |
+| Play | `←` `→` move, `Space` fire, `R` restart, `P` show paths and headings, `A` toggle attacks |
 | Shape browser | the vector artwork and the font, at a size where they can be judged |
 | Pose check | `←` `→` change shape |
 | Sprite browser | `←` `→` page the original arcade sheet — reference only |
 
 `Esc` quits.
 
-Flags: `--scene` / `--pose` / `--shapes` pick a starting view, `--page N` and `--subject N`
+Flags: `--title` / `--scene` / `--pose` / `--shapes` / `--browser` pick a
+starting view — and `--at` or `--stats` without one implies the game, since
+there is nothing to fast-forward on a menu. Others: `--page N` and `--subject N`
 pick within it, `--scale N` sets the window zoom (default 3), `--paths` turns on
 the path overlay, `--at TICK` fast-forwards the simulation before the first
 frame, `--shot out.bmp` renders one frame and exits, `--stats N` runs the wave
@@ -381,6 +385,15 @@ failed state reset. `--trace` prints the state of every new wave for exactly
 this reason; it reports stray shots and pre-damaged bosses at each stage
 boundary, and reads zero for both.
 
+### The fighter keeps flying between stages
+
+The pause after a wave is cleared used to take the controls away, because the
+player update sat below an early return. It reads as the game hanging. Movement
+and firing now happen above that return, and anything fired during the pause is
+cleared when the next wave is handed out, so nothing leaks across the boundary -
+which was the whole reason the shot handling moved above the early returns in
+the first place.
+
 ### Dying clears the board
 
 When the fighter is destroyed every diver is recalled to its return lane, the
@@ -417,6 +430,32 @@ artwork in the enemy palette, upside down.
 Hover height and beam length have to be chosen together. The first attempt
 hovered at y=104 with a beam 78 long, which stops eighty pixels short of the
 fighter's row at 264, so no capture was possible at all.
+
+## Title screen
+
+`CLAUDAGA` is drawn a letter at a time so the wordmark can run through a colour
+ramp, with a dark pass offset behind it for depth, which is most of what makes
+an arcade logo look like one rather than like a line of text. The ramp is a warm
+arch, brightest in the middle: a version that ran all the way to cool put a pale
+blue letter on the end of the word and broke it.
+
+The menu is Start, Options and Quit, with the fighter itself as the cursor. The
+starfield is the game's own, shared rather than duplicated - two star systems
+drifting at different rates would be obvious the moment the game started.
+
+Options is a placeholder. It is reachable from the title rather than sitting in
+the `Tab` rotation, and says so.
+
+## Stage flags
+
+The count along the bottom right is spelled out with the largest denominations
+first, as the arcade does: stage 23 is a twenty and three ones. They are laid
+out from the right edge inwards so the row grows leftwards, and capped at what
+the row will hold.
+
+One shield shape drawn six ways. On the cabinet these are six separate pieces of
+art, but the whole job of a flag is to be told apart from the others at a
+glance, and colour alone does that — so it is one drawing and six palettes.
 
 ## Challenging stages
 
@@ -481,15 +520,12 @@ to *behaves like Galaga*.
 
 ## Next
 
-The sheet has nothing left that the game needs. The tractor beam and the
-challenging-stage flyers are drawn as shapes now, and the only thing still owed
-to it is the stage-flag row along the bottom right, which was removed rather
-than converted because it was sheet art wired to nothing. Draw six little
-shields and drive them off the stage count and `assets/` can go, taking the
-copyright caveat with it.
-
-`atlas.c` is already trimmed to what the browser needs. It is reference
-material, not a dependency: the game starts and plays without the file present.
+**Nothing is owed to the sheet any more.** The tractor beam, the
+challenging-stage flyers and the stage flags are all shapes, and the game starts
+and plays with the file absent. `assets/` and `atlas.*` can be deleted whenever
+you like, taking the copyright caveat with them; they are kept only because the
+browser is a convenient way to look at the original when designing something
+new.
 
 Mechanically: the formation's side-to-side sway, and a difficulty ramp so the
 attack rate, dive speed and number of simultaneous divers climb with the stage

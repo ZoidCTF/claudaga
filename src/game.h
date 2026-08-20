@@ -80,6 +80,12 @@ typedef struct {
     int    min_death_gap;
 } Game;
 
+/* The starfield. Exposed because the title screen flies the same sky, and two
+   independent star systems drifting at different rates would be obvious the
+   moment the game started. */
+void game_background_update(void);
+void game_background_draw(Gfx *gfx);
+
 void game_init(Game *g);
 void game_restart(Game *g);           /* back to stage 1 with a full crew */
 void game_update(Game *g, const Uint8 *keys);

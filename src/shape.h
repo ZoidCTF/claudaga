@@ -61,6 +61,8 @@ typedef enum {
     SHP_DART,
     SHP_ORB,
 
+    SHP_FLAG,   /* one shield, six palettes: the stage-count flags */
+
     SHP_COUNT
 } ShapeId;
 
@@ -75,6 +77,14 @@ const char  *shape_name(ShapeId id);
    already taken a hit. Both are the same artwork in different colours. */
 extern const ShapePalette SHAPE_PAL_FIGHTER_CAPTURED;
 extern const ShapePalette SHAPE_PAL_BOSS_HIT;
+
+/* The stage flags. One shield drawn six ways: on the arcade cabinet these are
+   six separate pieces of art, but the whole job of a flag is to be told apart
+   from the others at a glance, which colour alone does. Values run 1, 5, 10,
+   20, 30, 50 and a stage count is spelled out with the largest first. */
+#define FLAG_KINDS 6
+extern const int          SHAPE_FLAG_VALUE[FLAG_KINDS];
+extern const ShapePalette SHAPE_PAL_FLAG[FLAG_KINDS];
 
 /* Draws `id` centred on `pos`, turned `heading` degrees clockwise from north.
    `scale` of 1 draws it at its authored size. */

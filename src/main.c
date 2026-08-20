@@ -1,6 +1,6 @@
 /* Claudaga.
  *
- * The play view is the game and is what starts. Behind it on Tab sit three
+ * Opens on the title screen; START runs the game. Behind play on Tab sit three
  * tools: the shape browser shows the vector artwork and the font at a size
  * where they can be judged, the pose check drives a shape through a full
  * circle of headings, and the sprite browser shows the original arcade sheet
@@ -24,8 +24,100 @@ static const SDL_Color YELLOW = { 255, 216,   0, 255 };
 static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color DIM    = { 144, 144, 160, 255 };
 
-/* Play first: the tools sit behind it on Tab rather than in front of it. */
-typedef enum { VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_BROWSER, VIEW_COUNT } View;
+/* The title is where the game opens; the tools sit behind play on Tab. */
+typedef enum {
+    VIEW_TITLE, VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_BROWSER, VIEW_COUNT
+} View;
+
+/* Options has nothing in it yet, so it is reachable from the title rather than
+   sitting in the Tab rotation. */
+typedef enum { MENU_START, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuItem;
+
+/* --------------------------------------------------------------- title */
+
+/* The wordmark. Drawn a letter at a time so it can run through a colour ramp,
+   with a dark pass offset behind it for depth - which is most of what makes an
+   arcade logo look like one rather than like a line of text. */
+static void draw_logo(Gfx *g, float cx, float top, float scale)
+{
+    static const char *TITLE = "CLAUDAGA";
+    /* A warm arch, brightest in the middle. A ramp that ran all the way to
+       cool put a pale blue letter on the end of the word, which broke it. */
+    static const SDL_Color RAMP[8] = {
+        { 255,  72,  56, 255 }, { 255, 118,  40, 255 },
+        { 255, 166,  40, 255 }, { 255, 212,  56, 255 },
+        { 255, 240,  96, 255 }, { 255, 206,  48, 255 },
+        { 255, 158,  40, 255 }, { 255, 104,  44, 255 },
+    };
+    static const SDL_Color SHADOW = { 24, 32, 96, 255 };
+
+    float w   = font_width_scaled(TITLE, scale);
+    float x0  = cx - w * 0.5f;
+    float off = scale * 0.55f;
+
+    for (int pass = 0; pass < 2; ++pass) {
+        float x = x0 + (pass ? 0.0f : off);
+        float y = top + (pass ? 0.0f : off);
+        for (int i = 0; i < 8; ++i) {
+            char one[2] = { TITLE[i], 0 };
+            font_draw_scaled(g, x, y, pass ? RAMP[i] : SHADOW, one, scale);
+            x += FONT_ADVANCE * scale;
+        }
+    }
+}
+
+static void title_draw(Gfx *g, int menu_sel, int tick)
+{
+    game_background_draw(g);
+
+    draw_logo(g, GAME_W * 0.5f, 40.0f, 3.4f);
+
+    const char *sub = "A GALAGA CLONE IN C99 AND SDL2";
+    font_draw(g, (GAME_W - font_width(sub)) / 2, 86, DIM, sub);
+
+    /* A few of the cast, so the title screen shows what the game is. */
+    static const ShapeId CAST[4] = { SHP_BEE, SHP_BUTTERFLY, SHP_BOSS, SHP_MOTH };
+    for (int i = 0; i < 4; ++i) {
+        Vec2 p = { 48.0f + i * 43.0f, 116.0f };
+        shape_draw(g, CAST[i], p, HEADING_N, 1.5f);
+    }
+
+    static const char *ITEMS[MENU_COUNT] = { "START", "OPTIONS", "QUIT" };
+    for (int i = 0; i < MENU_COUNT; ++i) {
+        float y = 164.0f + i * 22.0f;
+        bool  on = (i == menu_sel);
+        int   x  = (GAME_W - font_width(ITEMS[i])) / 2;
+        font_draw(g, x, (int)y, on ? YELLOW : DIM, ITEMS[i]);
+
+        /* The fighter itself is the cursor. */
+        if (on) {
+            Vec2 c = { (float)x - 14.0f, y + FONT_H * 0.5f };
+            shape_draw(g, SHP_FIGHTER, c, HEADING_E, 1.0f);
+        }
+    }
+
+    if ((tick / 30) % 2 == 0) {
+        const char *hint = "ARROWS SELECT   ENTER CONFIRM";
+        font_draw(g, (GAME_W - font_width(hint)) / 2, GAME_H - 24, CYAN, hint);
+    }
+    font_draw(g, 4, GAME_H - 9, DIM, "TAB TOOLS");
+}
+
+static void options_draw(Gfx *g)
+{
+    game_background_draw(g);
+    const char *h = "OPTIONS";
+    font_draw_scaled(g, (GAME_W - font_width_scaled(h, 2.0f)) / 2, 50.0f,
+                     YELLOW, h, 2.0f);
+
+    const char *a = "NOTHING TO SET YET";
+    const char *b = "SOUND AND CONTROLS WILL LIVE HERE";
+    font_draw(g, (GAME_W - font_width(a)) / 2, 120, DIM, a);
+    font_draw(g, (GAME_W - font_width(b)) / 2, 134, DIM, b);
+
+    const char *back = "ESC BACK";
+    font_draw(g, (GAME_W - font_width(back)) / 2, GAME_H - 40, CYAN, back);
+}
 
 /* ----------------------------------------------------------- shape browser */
 
@@ -202,7 +294,7 @@ static void pose_draw(Gfx *g, int subject)
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: claudaga [--shapes] [--pose] [--browser] [--scene]\n"
+            "usage: claudaga [--title] [--scene] [--shapes] [--pose] [--browser]\n"
             "                [--page N] [--subject N] [--scale N]\n"
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
@@ -213,7 +305,10 @@ static void usage(void)
 int main(int argc, char **argv)
 {
     const char *shot_path = NULL;
-    View        view      = VIEW_PLAY;
+    View        view      = VIEW_TITLE;
+    bool        view_set  = false;
+    bool        options   = false;
+    int         menu_sel  = MENU_START;
     int         page      = 0;
     int         subject   = 0;
     int         scale     = 3;
@@ -226,10 +321,11 @@ int main(int argc, char **argv)
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--shot") && i + 1 < argc)          shot_path = argv[++i];
-        else if (!strcmp(argv[i], "--scene"))                    view = VIEW_PLAY;
-        else if (!strcmp(argv[i], "--pose"))                     view = VIEW_POSE;
-        else if (!strcmp(argv[i], "--shapes"))                   view = VIEW_SHAPES;
-        else if (!strcmp(argv[i], "--browser"))                  view = VIEW_BROWSER;
+        else if (!strcmp(argv[i], "--scene"))   { view = VIEW_PLAY;    view_set = true; }
+        else if (!strcmp(argv[i], "--pose"))    { view = VIEW_POSE;    view_set = true; }
+        else if (!strcmp(argv[i], "--shapes"))  { view = VIEW_SHAPES;  view_set = true; }
+        else if (!strcmp(argv[i], "--browser")) { view = VIEW_BROWSER; view_set = true; }
+        else if (!strcmp(argv[i], "--title"))   { view = VIEW_TITLE;   view_set = true; }
         else if (!strcmp(argv[i], "--page")    && i + 1 < argc)  page = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--subject") && i + 1 < argc)  subject = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--scale")   && i + 1 < argc)  scale = atoi(argv[++i]);
@@ -242,6 +338,11 @@ int main(int argc, char **argv)
         else { usage(); return 1; }
     }
     if (scale < 1) scale = 1;
+
+    /* Fast-forwarding or measuring means the game, not the title: there is
+       nothing to advance on a menu, and every capture would otherwise come
+       back as a picture of the title screen. */
+    if (!view_set && (warmup > 0 || stats > 0)) view = VIEW_PLAY;
     if (subject < 0 || subject >= ARRAY_COUNT(POSE_SUBJECTS)) subject = 0;
 
     Gfx g;
@@ -318,8 +419,37 @@ int main(int argc, char **argv)
                 running = false;
             } else if (ev.type == SDL_KEYDOWN && !ev.key.repeat) {
                 switch (ev.key.keysym.sym) {
-                case SDLK_ESCAPE: running = false; break;
-                case SDLK_TAB:    view = (View)((view + 1) % VIEW_COUNT); break;
+                case SDLK_ESCAPE:
+                    /* Escape backs out of options; anywhere else it quits. */
+                    if (options) options = false;
+                    else         running = false;
+                    break;
+                case SDLK_TAB:
+                    if (!options) view = (View)((view + 1) % VIEW_COUNT);
+                    break;
+                case SDLK_UP:
+                    if (view == VIEW_TITLE && !options) {
+                        menu_sel = (menu_sel + MENU_COUNT - 1) % MENU_COUNT;
+                    }
+                    break;
+                case SDLK_DOWN:
+                    if (view == VIEW_TITLE && !options) {
+                        menu_sel = (menu_sel + 1) % MENU_COUNT;
+                    }
+                    break;
+                case SDLK_RETURN:
+                case SDLK_KP_ENTER:
+                    if (view == VIEW_TITLE && !options) {
+                        if (menu_sel == MENU_START) {
+                            game_restart(&game);
+                            view = VIEW_PLAY;
+                        } else if (menu_sel == MENU_OPTIONS) {
+                            options = true;
+                        } else {
+                            running = false;
+                        }
+                    }
+                    break;
                 case SDLK_r:
                     if (view == VIEW_PLAY) game_restart(&game);
                     break;
@@ -363,10 +493,13 @@ int main(int argc, char **argv)
             accum -= STEP;
             ++tick;
             if (view == VIEW_PLAY) game_update(&game, keys);
+            else                   game_background_update();
         }
 
         gfx_begin_frame(&g);
-        if (view == VIEW_PLAY)        game_draw(&g, &game);
+        if (options)                  options_draw(&g);
+        else if (view == VIEW_TITLE)  title_draw(&g, menu_sel, tick);
+        else if (view == VIEW_PLAY)   game_draw(&g, &game);
         else if (view == VIEW_POSE)   pose_draw(&g, subject);
         else if (view == VIEW_SHAPES) shapes_draw(&g, tick);
         else                          browser_draw(&g, page, page_count, starts,

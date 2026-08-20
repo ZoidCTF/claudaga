@@ -94,6 +94,9 @@ static void stars_draw(Gfx *g)
     }
 }
 
+void game_background_update(void) { stars_update(); }
+void game_background_draw(Gfx *gfx) { stars_draw(gfx); }
+
 /* ------------------------------------------------------------------ setup */
 
 static void clear_shots(Game *g);
@@ -361,6 +364,20 @@ static void clear_shots(Game *g)
     for (int i = 0; i < MAX_SHOTS; ++i) g->shots[i].alive = false;
 }
 
+/* Movement, on its own, because the fighter keeps flying during the pause
+   between stages. The arcade never takes the controls away there, and having
+   it lock up mid-screen while the message is on reads as the game hanging. */
+static void steer_player(Game *g, const Uint8 *keys)
+{
+    if (keys[SDL_SCANCODE_LEFT])  g->player.x -= PLAYER_SPEED;
+    if (keys[SDL_SCANCODE_RIGHT]) g->player.x += PLAYER_SPEED;
+
+    /* A dual fighter is twice as wide, so it stops sooner at the edges. */
+    float half = CELL / 2.0f + (g->player.dual ? DUAL_OFFSET : 0.0f);
+    if (g->player.x < half)          g->player.x = half;
+    if (g->player.x > GAME_W - half) g->player.x = GAME_W - half;
+}
+
 static int shots_in_air(const Game *g)
 {
     int n = 0;
@@ -416,6 +433,16 @@ void game_update(Game *g, const Uint8 *keys)
     /* Between stages: hold briefly on an empty screen, then send in the next
        wave. Nothing else about a stage changes yet - see the README. */
     if (g->stage_clear > 0) {
+        /* Still your ship: it flies and it shoots. Anything fired here is
+           cleared when the next wave is handed out, so nothing leaks across
+           the boundary. */
+        if (g->player.alive) {
+            steer_player(g, keys);
+            if (g->fire_cooldown > 0) --g->fire_cooldown;
+            if (keys[SDL_SCANCODE_SPACE] && g->fire_cooldown == 0) fire(g);
+        }
+        collide_shots(g);
+
         if (--g->stage_clear == 0) {
             ++g->stage;
             clear_shots(g);        /* nothing from the old wave survives */
@@ -449,13 +476,7 @@ void game_update(Game *g, const Uint8 *keys)
             g->player.cap_pos.y += dy / d * CAPTURE_LIFT;
         }
     } else if (g->player.alive) {
-        if (keys[SDL_SCANCODE_LEFT])  g->player.x -= PLAYER_SPEED;
-        if (keys[SDL_SCANCODE_RIGHT]) g->player.x += PLAYER_SPEED;
-
-        /* A dual fighter is twice as wide, so it stops sooner at the edges. */
-        float half = CELL / 2.0f + (g->player.dual ? DUAL_OFFSET : 0.0f);
-        if (g->player.x < half)              g->player.x = half;
-        if (g->player.x > GAME_W - half)     g->player.x = GAME_W - half;
+        steer_player(g, keys);
 
         if (g->fire_cooldown > 0) --g->fire_cooldown;
         if (keys[SDL_SCANCODE_SPACE] && g->fire_cooldown == 0) fire(g);
@@ -592,12 +613,30 @@ void game_draw(Gfx *gfx, const Game *g)
 
     /* Spare lives along the bottom left, drawn as small copies of the ship
        itself rather than a separate icon - one more thing the vector artwork
-       gets for nothing. The stage flags that used to sit bottom right were
-       sheet art and a fixed decoration wired to nothing, so they are gone
-       until they can be drawn as shapes and driven by the stage count. */
+       gets for nothing. */
     for (int i = 0; i < g->player.lives - 1 && i < 5; ++i) {
         Vec2 p = { 9.0f + i * 13.0f, (float)(GAME_H - 9) };
         shape_draw(gfx, SHP_FIGHTER, p, HEADING_N, 0.72f);
+    }
+
+    /* Stage flags along the bottom right, spelling the stage number out with
+       the largest denominations first - 23 is a twenty and three ones. They
+       are laid out from the right edge inwards, so the count grows leftwards
+       the way the arcade's does, and are capped at what the row will hold. */
+    {
+        float fx_x = GAME_W - 8.0f;
+        int   left = g->stage;
+        int   drawn = 0;
+        for (int k = 0; k < FLAG_KINDS && drawn < 12; ++k) {
+            while (left >= SHAPE_FLAG_VALUE[k] && drawn < 12) {
+                Vec2 p = { fx_x, (float)(GAME_H - 9) };
+                shape_draw_pal(gfx, SHP_FLAG, p, HEADING_N, 0.62f,
+                               &SHAPE_PAL_FLAG[k], 1.0f);
+                left -= SHAPE_FLAG_VALUE[k];
+                fx_x -= 8.0f;
+                ++drawn;
+            }
+        }
     }
 
     if (g->game_over > 0) {
