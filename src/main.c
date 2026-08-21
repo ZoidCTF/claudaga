@@ -34,11 +34,57 @@ static const SDL_Color DIM    = { 144, 144, 160, 255 };
 static const SDL_Color PALE   = { 230, 230, 240, 255 };
 
 /* The title is where the game opens; the tools sit behind play on Tab. */
-typedef enum { VIEW_TITLE, VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_COUNT } View;
+/* VIEW_DEMO sits outside the Tab rotation: it is somewhere the game puts
+   itself, not somewhere a person navigates to. */
+typedef enum { VIEW_TITLE, VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_COUNT,
+               VIEW_DEMO } View;
 
 /* Options has nothing in it yet, so it is reachable from the title rather than
    sitting in the Tab rotation. */
 typedef enum { MENU_START, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuItem;
+
+/* ---------------------------------------------------------------- demo */
+
+/* How long the title waits before showing the game off, and how long it shows
+   it for. An arcade cabinet alternated the two forever; the only difference
+   here is that the menu is a real menu, so the demo has to get out of the way
+   the moment anybody touches anything. */
+#define IDLE_BEFORE_DEMO 600     /* ten seconds of nobody home */
+#define DEMO_LENGTH     1500     /* twenty-five seconds of playing */
+
+/* The hands on the controls during a demo, and during a --at warm-up. One
+   function so the game the harness measures and the game the attract screen
+   shows are the same game being played the same way.
+
+   It sweeps rather than sitting still: parked in the middle it would only ever
+   shoot up one column, and a wave that never clears is a poor advertisement
+   for the game and a useless warm-up. */
+static Input demo_input(int tick)
+{
+    Input in = { false, false, true };
+    int leftward = (tick / 90) % 2;
+    in.left  = leftward != 0;
+    in.right = leftward == 0;
+    return in;
+}
+
+/* The game, with a word over it saying that nobody is playing. Without it a
+   demonstration is indistinguishable from a game somebody abandoned. */
+static void demo_draw(Gfx *g, const Game *game, int tick)
+{
+    game_draw(g, game);
+
+    /* Low, in the band between the formation and the fighter's row. Centred
+       vertically it sat across the bees, which is the part of the screen the
+       demonstration exists to show. */
+    if ((tick / 30) % 2 == 0) {
+        const char *m = "DEMO";
+        font_draw_scaled(g, (GAME_W - font_width_scaled(m, 2.0f)) / 2,
+                         186.0f, YELLOW, m, 2.0f);
+    }
+    const char *k = "PRESS ANY KEY";
+    font_draw(g, (GAME_W - font_width(k)) / 2, 206, DIM, k);
+}
 
 /* --------------------------------------------------------------- title */
 
@@ -321,7 +367,7 @@ static void usage(void)
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "                [--stage N] [--mute] [--padtest] [--options]\n"
-            "                [--audiotest [DIR]] [--paused] [--divedump]\n"
+            "                [--audiotest [DIR]] [--paused] [--divedump] [--demo]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -341,6 +387,11 @@ typedef struct {
 
     int  opt_sel;      /* which row of the options page                   */
     bool paused;       /* the game is up but not running                  */
+
+    /* The attract cycle. `idle` counts frames since anybody last touched a
+       control on the title; `demo` counts down the demonstration itself. */
+    int  idle;
+    int  demo;
 
     /* Not owned here, but every menu action needs them. Passing them through
        each handler instead would mean five signatures changing every time a
@@ -451,6 +502,35 @@ static void ui_back(Ui *u)
     }
 }
 
+/* Anything at all from a person cancels the attract cycle and resets the wait.
+   It is deliberately not "a key that means something": on an arcade cabinet
+   the demo stops the instant a coin goes in, and here the equivalent is any
+   sign of life whatsoever. */
+static void ui_awake(Ui *u, Game *game)
+{
+    u->idle = 0;
+    if (u->demo > 0) {
+        u->demo = 0;
+        u->view = VIEW_TITLE;
+        game->demo = false;
+        audio_music_stop();
+    }
+}
+
+/* Hands the game to itself. It restarts from stage one so the demonstration
+   always shows the game from the beginning rather than from wherever the last
+   person left it. */
+static void ui_start_demo(Ui *u, Game *game)
+{
+    game->demo = false;      /* cleared first so the restart is a normal one */
+    game_restart(game);
+    game->demo = true;
+    u->demo    = DEMO_LENGTH;
+    u->view    = VIEW_DEMO;
+    u->paused  = false;
+    SDL_Log("attract: nobody home, showing the game off");
+}
+
 static void ui_next_view(Ui *u)
 {
     if (!u->options) u->view = (View)((u->view + 1) % VIEW_COUNT);
@@ -460,7 +540,7 @@ int main(int argc, char **argv)
 {
     const char *shot_path = NULL;
     Ui          ui        = { VIEW_TITLE, MENU_START, false, true, 0,
-                              OPT_SFX, false, NULL, NULL };
+                              OPT_SFX, false, 0, 0, NULL, NULL };
     Settings    settings;
     bool        view_set  = false;
     int         scale     = 3;
@@ -474,6 +554,7 @@ int main(int argc, char **argv)
     bool        divedump  = false;
     bool        show_options = false;
     bool        show_paused  = false;
+    bool        show_demo    = false;
     const char *audiodir  = NULL;
     bool        audioreport = false;
     bool        autofire  = false;
@@ -503,6 +584,7 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(argv[i], "--options")) { show_options = true; view_set = true; }
         else if (!strcmp(argv[i], "--paused"))  { show_paused  = true; view_set = true; }
+        else if (!strcmp(argv[i], "--demo"))    { show_demo    = true; view_set = true; }
         else { usage(); return 1; }
     }
     if (scale < 1) scale = 1;
@@ -573,6 +655,10 @@ int main(int argc, char **argv)
     static Game game;   /* several hundred KB of baked paths; not stack-sized */
     game_init(&game);
 
+    /* The demo needs a game to have been built, so it is set up here rather
+       than beside the other view flags above. */
+    if (show_demo) ui_start_demo(&ui, &game);
+
     /* Starting later is a measurement tool rather than a cheat: the difficulty
        ramp only shows itself over a dozen stages, and playing up to stage 12 to
        check a number is not a test anybody runs twice. */
@@ -602,17 +688,8 @@ int main(int argc, char **argv)
     /* --at runs the simulation forward with no rendering, so a screenshot can
        be taken at a chosen moment rather than only at tick 0. Pair it with
        --observe to stop the fighter dying and restarting the run. */
-    Input warm = { false, false, false };
-    warm.fire = autofire;
     for (int i = 0; i < warmup; ++i) {
-        /* Autofire also sweeps the fighter side to side. Parked in the middle
-           it only ever shoots up one column, so a wave never clears and the
-           later stages cannot be reached to look at. */
-        if (autofire) {
-            int leftward = (i / 90) % 2;
-            warm.left  = leftward != 0;
-            warm.right = leftward == 0;
-        }
+        Input warm = autofire ? demo_input(i) : (Input){ false, false, false };
         play_tick(&game, &warm, WARMUP_TO_TITLE, &ui.view, &ui.menu_sel);
     }
 
@@ -630,6 +707,11 @@ int main(int argc, char **argv)
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             input_event(&ev);
+
+            if (ev.type == SDL_KEYDOWN || ev.type == SDL_CONTROLLERBUTTONDOWN ||
+                ev.type == SDL_MOUSEBUTTONDOWN) {
+                ui_awake(&ui, &game);
+            }
 
             if (ev.type == SDL_QUIT) {
                 ui.running = false;
@@ -682,6 +764,7 @@ int main(int argc, char **argv)
            events and are only noticed when the sticks are sampled. They go
            through the very same handlers the keys do. */
         for (UiAction a = input_take_ui(); a != UI_NONE; a = input_take_ui()) {
+            ui_awake(&ui, &game);
             switch (a) {
             case UI_UP:        ui_up(&ui);             break;
             case UI_DOWN:      ui_down(&ui);           break;
@@ -726,8 +809,35 @@ int main(int argc, char **argv)
                 if (!ui.paused) {
                     play_tick(&game, &in, true, &ui.view, &ui.menu_sel);
                 }
+            } else if (ui.view == VIEW_DEMO) {
+                Input hands = demo_input(tick);
+                game_update(&game, &hands);
+
+                /* It ends when its time is up or when it loses, whichever
+                   comes first - a demonstration that sat on a results screen
+                   would be showing the one part of the game nobody needs
+                   advertising. */
+                if (--ui.demo <= 0 || game.finished || game.results > 0) {
+                    SDL_Log("attract: demo over after %d ticks%s",
+                            DEMO_LENGTH - ui.demo,
+                            game.finished || game.results > 0 ? " (lost)" : "");
+                    ui.demo    = 0;
+                    ui.idle    = 0;
+                    game.demo  = false;
+                    ui.view    = VIEW_TITLE;
+                }
             } else {
                 game_background_update();
+
+                /* Nobody home for long enough, and the game starts showing
+                   itself off. Only from the title proper: the options page and
+                   the shape tools are places somebody is deliberately looking
+                   at something. */
+                if (ui.view == VIEW_TITLE && !ui.options) {
+                    if (++ui.idle >= IDLE_BEFORE_DEMO) ui_start_demo(&ui, &game);
+                } else {
+                    ui.idle = 0;
+                }
 
                 /* Everything that is not the game runs under the title music -
                    the menu, the options page and both shape tools. Asking for
@@ -741,6 +851,7 @@ int main(int argc, char **argv)
         if (ui.options)               options_draw(&g, &settings, ui.opt_sel);
         else if (ui.view == VIEW_TITLE)  title_draw(&g, ui.menu_sel, tick);
         else if (ui.view == VIEW_PLAY)   game_draw(&g, &game);
+        else if (ui.view == VIEW_DEMO)   demo_draw(&g, &game, tick);
         else if (ui.view == VIEW_POSE)   pose_draw(&g, ui.subject);
         else                          shapes_draw(&g, tick);
 

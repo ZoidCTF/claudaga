@@ -796,6 +796,25 @@ as 16383 — half pressed, which fires, and correctly so. The test released the
 trigger to 0 and then reported the game as broken for doing the right thing
 with it.
 
+## The attract screen
+
+Left alone on the title for ten seconds, the game starts playing itself, and
+keeps at it for twenty-five - or until it loses, since a demonstration that sat
+on a results screen would be advertising the one part of the game nobody needs
+convincing about. Anything at all from a person stops it: not a key that means
+something, but any key, any button, any click, because on a cabinet the demo
+stops the instant a coin goes in.
+
+It plays for real - the same update, the same wave, the same collisions - with
+one exception. A demo cannot reach the high score. A machine nobody is sitting
+at should not be able to beat the person who last played it, so `add_score`
+ignores it and the save at game over is skipped.
+
+The hands on the controls are the same function the `--at` warm-up uses, so the
+game the harness measures and the game the attract screen shows are the same
+game played the same way. It sweeps rather than sitting still, because parked in
+the middle it would only ever shoot up one column.
+
 ## Sound
 
 Sound arrived last, and is the only part of the game that is not generated from
@@ -1061,10 +1080,8 @@ to confirm during play.
 
 ## Next
 
-**In rough order of how much they would add:** an attract mode, since the title
-screen is a static menu where the arcade played a demo; initials against a high
-score rather than a bare number; and varying the formation entry flights per
-stage, which are the same five every time where the arcade shuffles them.
+**In rough order of how much they would add:** two-player alternating play, and
+initials against a high score rather than a bare number.
 
 Two sounds are still boomier than they want to be and were left alone because
 only the explosions were reported: `bosshit_*` at 0.87 and 0.99 of their energy

@@ -378,7 +378,8 @@ static void add_score(Game *g, int n)
         }
     }
 
-    if (g->score > g->high_score) g->high_score = g->score;
+    /* A demo plays for real but does not count. */
+    if (!g->demo && g->score > g->high_score) g->high_score = g->score;
 }
 
 static void collide_shots(Game *g)
@@ -665,7 +666,7 @@ void game_update(Game *g, const Input *in)
         if (--g->game_over == 0) {
             g->results       = RESULTS_TICKS;
             g->results_armed = false;
-            highscore_save(g->high_score);
+            if (!g->demo) highscore_save(g->high_score);
         }
         return;
     }

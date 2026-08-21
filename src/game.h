@@ -98,6 +98,12 @@ typedef struct {
        announce itself. */
     bool   quiet;
 
+    /* The game playing itself on the title screen. It plays for real - the
+       same update, the same wave, the same collisions - but it must not be
+       able to reach the high score, which would let a machine nobody is
+       sitting at beat the person who last played it. */
+    bool   demo;
+
     /* Debug aid: stops the fighter dying, so a long --at run reaches the tick
        it was asked for instead of restarting halfway. */
     bool   invulnerable;
