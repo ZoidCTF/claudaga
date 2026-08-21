@@ -150,10 +150,18 @@ void input_event(const SDL_Event *ev)
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  ui_push(UI_DOWN);    break;
         case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  ui_push(UI_LEFT);    break;
         case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: ui_push(UI_RIGHT);   break;
-        case SDL_CONTROLLER_BUTTON_A:
-        case SDL_CONTROLLER_BUTTON_START:      ui_push(UI_CONFIRM); break;
-        case SDL_CONTROLLER_BUTTON_B:
-        case SDL_CONTROLLER_BUTTON_BACK:       ui_push(UI_BACK);    break;
+        case SDL_CONTROLLER_BUTTON_A:          ui_push(UI_CONFIRM); break;
+        case SDL_CONTROLLER_BUTTON_B:          ui_push(UI_BACK);    break;
+
+        /* Start affirms on a menu and pauses in play. Both are pushed; which
+           one means anything is the view's business, not this file's - input
+           has no idea what a view is and should not learn. */
+        case SDL_CONTROLLER_BUTTON_START:
+            ui_push(UI_CONFIRM);
+            ui_push(UI_PAUSE);
+            break;
+
+        case SDL_CONTROLLER_BUTTON_BACK:       ui_push(UI_MENU);    break;
 
         /* The shoulder buttons cycle the tools, which is what Tab does. */
         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
@@ -372,16 +380,38 @@ int input_selftest(void)
     pump(); input_sample(&in);
     while (input_take_ui() != UI_NONE) { }
 
-    /* Buttons that drive the menu. */
+    /* Buttons that drive the menu.
+     *
+     * The face buttons are fire, so what they must *not* do matters as much as
+     * what they do. A pushing a confirm is fine on a menu and was a disaster in
+     * play, where confirm meant pause and every shot toggled the game on and
+     * off; B pushing a back abandoned the run. They still push those actions -
+     * a menu needs them - and the view decides whether to listen. Pause and
+     * leaving are on Start and Back, which no thumb rests on. */
+    SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_A, 1);
+    pump();
+    check("A confirms", input_take_ui() == UI_CONFIRM, true);
+    check("A does not pause", input_take_ui() == UI_NONE, true);
+    SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_A, 0);
+    pump(); while (input_take_ui() != UI_NONE) { }
+
+    SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_B, 1);
+    pump();
+    check("B cancels", input_take_ui() == UI_BACK, true);
+    check("B does nothing else", input_take_ui() == UI_NONE, true);
+    SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_B, 0);
+    pump(); while (input_take_ui() != UI_NONE) { }
+
     SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_START, 1);
     pump();
     check("start confirms", input_take_ui() == UI_CONFIRM, true);
+    check("start also pauses", input_take_ui() == UI_PAUSE, true);
     SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_START, 0);
     pump(); while (input_take_ui() != UI_NONE) { }
 
     SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_BACK, 1);
     pump();
-    check("back goes back", input_take_ui() == UI_BACK, true);
+    check("back asks for the menu", input_take_ui() == UI_MENU, true);
     SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_BACK, 0);
     pump(); while (input_take_ui() != UI_NONE) { }
 

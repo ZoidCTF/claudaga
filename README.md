@@ -753,7 +753,20 @@ warm-up and the interactive loop through one `play_tick`.
 
 Fire is any of the four face buttons or the right trigger. Which button is *the*
 button is a matter of what somebody grew up holding, and none of the four is
-needed for anything else in flight.
+needed for anything else in flight - which is a rule that had to be learnt.
+
+A and Start both pushed a confirm, and confirm during play meant pause, so **A
+fired and paused at once** and every shot toggled the game on and off. B pushed
+a back, and back during play meant leaving, so the other fire button abandoned
+the run. The layering was right - `input.c` has no idea what a view is and
+should not learn - but the actions were too few: one button cannot mean *the
+affirmative one* and *the pause one* when the affirmative one is also the
+trigger.
+
+There are four now. A confirms, B cancels, Start confirms **and** pauses, Back
+asks for the menu; the view decides which of them it is listening to, and play
+listens to none of the face buttons at all. `--padtest` checks that A produces a
+confirm and *nothing else*, which is the half that was wrong.
 
 ### The options page, and a screen nobody looked at
 

@@ -33,10 +33,20 @@ typedef enum {
     UI_DOWN,
     UI_LEFT,
     UI_RIGHT,
-    UI_CONFIRM,
-    UI_BACK,
+    UI_CONFIRM,      /* A or Start - an affirmative, on a menu       */
+    UI_BACK,         /* B - a cancel, on a menu                      */
+    UI_PAUSE,        /* Start - and only Start                       */
+    UI_MENU,         /* Back/Select - out of the game, from anywhere  */
     UI_NEXT_VIEW
 } UiAction;
+
+/* Why confirm and pause are separate actions rather than one button read two
+   ways: A and B are *fire*. Firing must not also be pressing a menu button,
+   and it was - A confirmed, which during play meant pause, so every shot
+   toggled the game on and off; B went back, which during play meant abandoning
+   the run. Play gets exactly one thing from the face buttons now, which is
+   shooting, and the buttons that mean something else are the ones no thumb
+   rests on. */
 
 /* Opens the controller subsystem and every pad already plugged in. Safe to
    call when there are none, and safe to call when the subsystem will not start

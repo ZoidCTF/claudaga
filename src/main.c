@@ -1091,11 +1091,16 @@ int main(int argc, char **argv)
             case UI_DOWN:      ui_down(&ui);           break;
             case UI_LEFT:      ui_adjust(&ui, -1);     break;
             case UI_RIGHT:     ui_adjust(&ui, +1);     break;
+            case UI_PAUSE:     ui_toggle_pause(&ui);   break;
+            case UI_MENU:      ui_back(&ui);           break;
+            /* Nothing a thumb rests on does anything during play. A and B
+               are the fire buttons; pausing is Start and leaving is Back. */
             case UI_CONFIRM:
-                if (ui.view == VIEW_PLAY && !ui.options) ui_toggle_pause(&ui);
-                else                                     ui_confirm(&ui);
+                if (ui.view != VIEW_PLAY || ui.options) ui_confirm(&ui);
                 break;
-            case UI_BACK:      ui_back(&ui);           break;
+            case UI_BACK:
+                if (ui.view != VIEW_PLAY || ui.options) ui_back(&ui);
+                break;
             case UI_NEXT_VIEW: ui_next_view(&ui);      break;
             case UI_NONE:                              break;
             }
