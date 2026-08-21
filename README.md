@@ -706,14 +706,22 @@ peak, RMS, and the share of its loudness below 320 Hz — which is what "boomy"
 actually means, and separates a chest-thump from a chiptune zap far better than
 peak level does.
 
-That is how the explosions got replaced. The originals were
-`explosionCrunch_000/002/003`, and the numbers said exactly what was wrong with
-them: **0.78 to 1.55 seconds long, with 63 to 94 percent of their energy under
-320 Hz** — a long bass thump, forty times a stage, against a player shot of
-0.24s. The `phaserDown` family measures 0.31 to 0.50 seconds at 47 to 62
-percent, and peaks a third lower.
+It described the explosions accurately: `explosionCrunch_000/002/003` run
+**0.78 to 1.55 seconds with 63 to 94 percent of their energy under 320 Hz** — a
+long bass thump, forty times a stage, against a player shot of 0.24s.
 
-The same numbers turned up a second problem nobody had reported: the three
+It did not follow that swapping them was the answer, and that is the useful part
+of the story. A replacement set was chosen on those numbers — the `phaserDown`
+family, 0.31 to 0.50 seconds at 47 to 62 percent, peaking a third lower — and it
+sounded worse. The measurements were right about *why* the originals were
+fatiguing and gave no opinion at all about whether the alternatives were any
+good, which is not something they can tell you. The crunches are back, played at
+half volume, which was the fix all along.
+
+Measuring a mix you cannot hear narrows the search. It does not make the
+choice.
+
+The same numbers did turn up a second problem nobody had reported: the three
 jingles peaked at 0.13 to 0.45 against effects peaking at 0.90 — up to
 seventeen decibels down, and simply lost under the shooting. `Mix_VolumeChunk`
 can only attenuate, so the only way up was in the files, which are normalised

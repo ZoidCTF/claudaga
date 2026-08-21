@@ -15,7 +15,7 @@
 #define AUDIO_BUFFER   512
 #define AUDIO_CHANNELS 16
 
-#define SFX_VOLUME   MIX_MAX_VOLUME   /* per-effect levels do the trimming */
+#define SFX_VOLUME   (MIX_MAX_VOLUME * 3 / 5)
 #define MUSIC_VOLUME (MIX_MAX_VOLUME * 2 / 5)
 #define FADE_MS      400
 
@@ -30,27 +30,35 @@ typedef struct {
    generated from a stem and a count because the extensions differ - the
    Kenney effects are Vorbis and the jingles are WAV - and because a table you
    can read is worth more here than one you can loop over. */
-/* Each effect carries its own level, because the samples do not arrive at
-   matched loudness and nothing else can fix that: several of these fire at
-   once - a wave clearing sets off a handful of explosions inside a second -
-   and the one that is 6dB hot is the one you hear. The numbers were set
-   against the figures --audiotest prints rather than guessed, and the loudest
-   raw samples are the ones pulled down.
+/* Each effect carries its own level, applied on top of SFX_VOLUME. Full is
+   MIX_MAX_VOLUME, which is what an effect got before any of this existed, so
+   a table of full values plays exactly as the game always did and anything
+   below it is a deliberate trim of one sound.
+
+   Only the explosion is trimmed, and only because it was asked for: the
+   Kenney crunches are long and bass-heavy - 0.78 to 1.55 seconds with 63 to
+   94 percent of their energy under 320 Hz, forty times a stage - and half
+   volume is what makes them sit under the game rather than on top of it. The
+   samples themselves are the originals; a replacement set was tried and was
+   worse.
 
    Note this can only attenuate. Anything too quiet has to be lifted in the
    file itself, which is what happened to the jingles: they arrived peaking at
    0.13 against effects peaking at 0.9, seventeen decibels down and inaudible
    under the shooting. */
+#define VOL_FULL MIX_MAX_VOLUME
+#define VOL_HALF (MIX_MAX_VOLUME / 2)
+
 static const SfxDef SFX_FILES[SFX_COUNT] = {
-    [SFX_SHOT]       = { { "shot_0.ogg",    "shot_1.ogg",    "shot_2.ogg" },  96 },
-    [SFX_ENEMY_FIRE] = { { "efire_0.ogg",   "efire_1.ogg",   "efire_2.ogg" }, 80 },
-    [SFX_ENEMY_DIE]  = { { "boom_0.ogg",    "boom_1.ogg",    "boom_2.ogg" }, 112 },
-    [SFX_BOSS_HIT]   = { { "bosshit_0.ogg", "bosshit_1.ogg", NULL },         112 },
-    [SFX_PLAYER_DIE] = { { "die_0.ogg",     "die_1.ogg",     NULL },         128 },
-    [SFX_BEAM]       = { { "beam_0.ogg",    NULL,            NULL },          96 },
-    [SFX_STAGE]      = { { "jingle_stage.wav",   NULL, NULL },               110 },
-    [SFX_EXTRA]      = { { "jingle_extra.wav",   NULL, NULL },               110 },
-    [SFX_PERFECT]    = { { "jingle_perfect.wav", NULL, NULL },               110 },
+    [SFX_SHOT]       = { { "shot_0.ogg",    "shot_1.ogg",    "shot_2.ogg" },  VOL_FULL },
+    [SFX_ENEMY_FIRE] = { { "efire_0.ogg",   "efire_1.ogg",   "efire_2.ogg" }, VOL_FULL },
+    [SFX_ENEMY_DIE]  = { { "boom_0.ogg",    "boom_1.ogg",    "boom_2.ogg" },  VOL_HALF },
+    [SFX_BOSS_HIT]   = { { "bosshit_0.ogg", "bosshit_1.ogg", NULL },          VOL_FULL },
+    [SFX_PLAYER_DIE] = { { "die_0.ogg",     "die_1.ogg",     NULL },          VOL_FULL },
+    [SFX_BEAM]       = { { "beam_0.ogg",    NULL,            NULL },          VOL_FULL },
+    [SFX_STAGE]      = { { "jingle_stage.wav",   NULL, NULL },                VOL_FULL },
+    [SFX_EXTRA]      = { { "jingle_extra.wav",   NULL, NULL },                VOL_FULL },
+    [SFX_PERFECT]    = { { "jingle_perfect.wav", NULL, NULL },                VOL_FULL },
 };
 
 static const char *MUSIC_FILES[MUSIC_COUNT] = {
