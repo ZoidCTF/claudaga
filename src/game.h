@@ -147,6 +147,11 @@ void game_background_draw(Gfx *gfx);
 void game_init(Game *g);
 void game_restart(Game *g);           /* back to stage 1 with a full crew */
 void game_update(Game *g, const Input *in);
+
+/* True once a lost fighter has finished exploding and nothing is left flying.
+   A turn cannot be handed over before this: switching boards mid-explosion
+   leaves the wreck to appear over the next player's screen. */
+bool game_turn_settled(const Game *g);
 void game_draw(Gfx *gfx, const Game *g);
 
 #endif /* CLAUDAGA_GAME_H */

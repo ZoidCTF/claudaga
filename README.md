@@ -814,6 +814,50 @@ Freezing a seat between turns needed no new machinery. Losing a fighter raises
 board simply stops where it is until that seat comes round again. The session
 lowers the flag when it hands the controls back.
 
+**A capture does not end a turn.** It costs a fighter, but the arcade sends the
+same player straight back out - the whole point is that the fighter is still up
+there to be won back, and handing the controls to somebody else at that moment
+takes the rescue away from the only person with a reason to attempt it.
+
+### Changing hands is a sequence, not an instant
+
+The first version swapped seats on the tick the fighter was lost, and three
+things were wrong with it at once: the wreck of the outgoing ship carried over
+on to the incoming player's screen, the outgoing board vanished mid-dive, and
+the incoming one appeared fully formed with no explanation.
+
+So it is four phases now:
+
+| phase | what happens |
+|---|---|
+| settling | the explosion plays and whatever is flying gets home; nothing new launches |
+| leaving | the outgoing formation lifts off the top of the screen, keeping its shape |
+| announcing | PLAYER 1 or PLAYER 2, over an empty sky |
+| arriving | the incoming formation flies down into place |
+
+**Control returns only at the end.** A board still arriving is not a board
+anybody can be asked to fight.
+
+The whole thing is one number: a `lift` offset added to every parked slot, the
+same way `sway` is. A formation that keeps its shape and translates *is* a
+formation flying off in formation - there is nothing else to model. It cost one
+mistake worth recording: moving the offset without stepping the wave changed the
+number while the formation sat exactly where it was, because the offset is only
+read when a parked enemy's position is worked out, and that happens inside
+`wave_update`.
+
+A board interrupted during its own entry resumes correctly because entries are
+*held* rather than cancelled: whatever had reached the formation flies back down
+as a block, and whatever had not launched yet picks up its schedule once the
+block is home. That is why the settling phase waits on `wave_settled` - nothing
+in the air - rather than `wave_all_formed`, which a half-entered board would
+never satisfy.
+
+Measured on the session's own clock, which is the only one that runs
+continuously - each seat's game tick stops while the other plays: a handover
+takes 266 to 408 ticks end to end, most of it the settling, which varies with
+how much was in the air when the fighter went.
+
 ### Who decides the game is over
 
 One player finishing has to leave the other playing on, and that turned out to

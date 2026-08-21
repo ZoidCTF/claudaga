@@ -147,6 +147,17 @@ typedef struct {
        something each enemy carries. */
     float sway;
 
+    /* How far the whole parked block is displaced vertically from its slots.
+       Zero is home; negative is off the top of the screen. This is how a board
+       leaves and arrives between turns - the formation keeps its shape and
+       simply translates, which is what "flies off in formation" means. */
+    float lift;
+
+    /* While held, nothing new launches on to an entry path. A board that is
+       being packed away must stop sending more enemies out to fly, or the air
+       never clears. Enemies already flying are unaffected; they finish. */
+    bool  entries_held;
+
     /* A challenging stage: the wave flies through without ever forming up,
        never attacks and never fires, and anything not shot simply escapes. */
     bool  challenge;
@@ -254,6 +265,21 @@ void wave_update(Wave *w, float player_x);
 void wave_draw(Gfx *g, const Wave *w);
 
 bool wave_all_formed(const Wave *w);
+
+/* Nothing is in the air: every enemy is parked, dead, or still waiting its
+   turn to enter. Weaker than wave_all_formed on purpose - a board interrupted
+   during its entry has enemies that have not launched yet, and waiting for
+   those would wait forever. */
+bool wave_settled(const Wave *w);
+
+/* Where the block sits when it is parked off the top of the screen. */
+#define FORM_AWAY (-(float)(FORM_Y + FORM_ROWS * FORM_PITCH + 24))
+
+/* Slides the parked block towards `target`, and returns true once it is there.
+   Call it every tick for as long as it returns false. */
+bool wave_lift(Wave *w, float target);
+
+void wave_hold_entries(Wave *w, bool hold);
 int  wave_divers(const Wave *w);
 void wave_print_stats(const Wave *w);
 

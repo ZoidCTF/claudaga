@@ -315,7 +315,12 @@ static void start_capture(Game *g, int boss)
     g->player.captured = true;
     g->player.alive    = false;
     g->gone_tick       = g->tick;
-    g->turn_over       = true;
+
+    /* Deliberately not a turn over. A capture costs a fighter, but the arcade
+       sends the same player straight back out - the whole point is that the
+       fighter is still up there to be won back, and handing the controls to
+       somebody else at that moment takes the rescue away from the person who
+       has a reason to attempt it. */
     g->player.cap_pos  = player_pos(g);
     g->player.cap_spin = 0.0f;
     g->player.cap_boss = boss;
@@ -868,6 +873,11 @@ static void draw_results(Gfx *gfx, const Game *g)
         const char *best = "NEW HIGH SCORE";
         font_draw(gfx, (GAME_W - font_width(best)) / 2, y + 54, YELLOW, best);
     }
+}
+
+bool game_turn_settled(const Game *g)
+{
+    return !fx_player_blast_active(&g->fx) && wave_settled(&g->wave);
 }
 
 void game_draw(Gfx *gfx, const Game *g)

@@ -732,6 +732,7 @@ static Vec2 slot_pos(const Wave *w, int slot)
 {
     Vec2 v = formation_slot_pos(slot);
     v.x += w->sway;
+    v.y += w->lift;
     return v;
 }
 
@@ -755,6 +756,8 @@ static void wave_reset_common(Wave *w)
     w->burst_left   = 0;
     w->last_side    = 0;
     w->sway         = 0.0f;
+    w->lift         = 0.0f;
+    w->entries_held = false;
     for (int i = 0; i < MAX_DIVERS; ++i) w->dive_refs[i] = 0;
     for (int i = 0; i < PATH_COUNT; ++i)  w->lane_free[i] = 0;
     for (int i = 0; i < MAX_ENEMY_SHOTS; ++i) w->shot[i].alive = false;
@@ -1357,7 +1360,7 @@ void wave_update(Wave *w, float player_x)
 
         switch (e->state) {
         case ENEMY_WAITING:
-            if (w->tick >= e->launch_tick) {
+            if (!w->entries_held && w->tick >= e->launch_tick) {
                 e->state   = ENEMY_ENTERING;
                 e->s       = 0.0f;
                 e->pos     = path_point(p, 0.0f);
@@ -1409,6 +1412,7 @@ void wave_update(Wave *w, float player_x)
             e->heading = heading_from_vec(tan.x, tan.y);
 
             e->pos.x += w->sway;
+            e->pos.y += w->lift;
 
             if (e->join_t >= 1.0f) {
                 e->state   = ENEMY_FORMED;
@@ -1676,6 +1680,42 @@ static void track_convoys(Wave *w)
             }
         }
     }
+}
+
+/* How fast a board leaves or arrives. Brisk enough not to be a wait, slow
+   enough to read as a formation moving rather than a cut. */
+#define LIFT_SPEED 3.2f
+
+bool wave_lift(Wave *w, float target)
+{
+    float d = target - w->lift;
+    if (d > -LIFT_SPEED && d < LIFT_SPEED) {
+        w->lift = target;
+        return true;
+    }
+    w->lift += (d > 0.0f) ? LIFT_SPEED : -LIFT_SPEED;
+    return false;
+}
+
+void wave_hold_entries(Wave *w, bool hold)
+{
+    w->entries_held = hold;
+}
+
+bool wave_settled(const Wave *w)
+{
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        switch (w->enemies[i].state) {
+        case ENEMY_ENTERING:
+        case ENEMY_TO_SLOT:
+        case ENEMY_DIVING:
+        case ENEMY_BEAMING:
+            return false;
+        default:
+            break;
+        }
+    }
+    return true;
 }
 
 bool wave_all_formed(const Wave *w)

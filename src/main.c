@@ -58,12 +58,45 @@ typedef enum { MENU_ONE, MENU_TWO, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuIte
 #define SEATS 2
 #define HANDOVER_TICKS 110
 
+/* Changing hands is a sequence, not an instant.
+ *
+ * A fighter is lost, and the first version swapped seats on that same tick.
+ * Three things were wrong with it at once: the wreck of the outgoing ship
+ * carried over on to the incoming player's screen, the outgoing board vanished
+ * mid-dive, and the incoming one appeared fully formed with no explanation.
+ *
+ * So: let the explosion finish and the air clear, lift the outgoing formation
+ * off the top of the screen, announce whose turn it is, and fly the incoming
+ * formation down into place. Only then do the controls go live - a board still
+ * arriving is not a board you can be asked to fight. */
+typedef enum {
+    TURN_PLAYING,
+    TURN_SETTLING,   /* the explosion, and whatever is still flying */
+    TURN_LEAVING,    /* the outgoing formation lifting away         */
+    TURN_ARRIVING    /* the incoming one coming down                */
+} TurnPhase;
+
 typedef struct {
-    Game *game;        /* points at the two Game objects main owns */
-    int   seats;       /* 1 or 2 */
-    int   turn;        /* whose it is */
-    int   handover;    /* ticks left on the PLAYER N banner */
+    Game     *game;      /* points at the two Game objects main owns */
+    int       seats;     /* 1 or 2 */
+    int       turn;      /* whose it is */
+    int       handover;  /* ticks left on the PLAYER N banner */
+    TurnPhase phase;
+    int       incoming;  /* the seat being handed to, during a change */
+
+    /* The session's own clock, which is the only one that runs continuously -
+       each seat's game tick stops while the other is playing, so a per-seat
+       number cannot describe a handover that spans both. */
+    int       tick;
 } Session;
+
+/* Says what just happened, on the session's clock, when tracing is on. */
+static void session_log(const Session *s, const char *what)
+{
+    if (!s->game[0].trace) return;
+    printf("tick %d: %s (seat %d, scores %d and %d)\n",
+           s->tick, what, s->turn + 1, s->game[0].score, s->game[1].score);
+}
 
 static bool seat_done(const Game *g)
 {
@@ -97,6 +130,9 @@ static void session_begin(Session *s, int seats)
     s->seats    = seats;
     s->turn     = 0;
     s->handover = 0;
+    s->phase    = TURN_PLAYING;
+    s->incoming = 0;
+    s->tick     = 0;
     for (int i = 0; i < SEATS; ++i) {
         s->game[i].demo = false;
         game_restart(&s->game[i]);
@@ -119,38 +155,85 @@ static void session_tick(Session *s, const Input *in, bool to_title,
 {
     Game *cur = &s->game[s->turn];
     session_sync(s);
+    ++s->tick;
 
-    if (s->handover > 0) {
-        /* Nothing steps under the banner: the outgoing seat has already lost
-           its fighter and the incoming one has not been handed the controls
-           yet. */
-        if (--s->handover == 0) {
-            cur = &s->game[s->turn];
-            cur->turn_over = false;
+    switch (s->phase) {
+    case TURN_SETTLING:
+        /* The outgoing board keeps running - the explosion has to play and the
+           divers have to get home - but nothing new goes out to meet them, or
+           the air would never clear. The player is already gone, so the input
+           handed on is nobody's. */
+        game_update(cur, in);
+        if (game_turn_settled(cur)) {
+            session_log(s, "settled - the board leaves");
+            s->phase = TURN_LEAVING;
         }
         return;
+
+    case TURN_LEAVING:
+        game_background_update();
+        fx_update(&cur->fx);
+
+        /* The wave still has to be stepped. The lift is an offset applied when
+           a parked enemy's position is worked out, and that only happens
+           inside wave_update - move the offset without stepping the wave and
+           the number changes while the formation sits exactly where it was.
+           Entries stay held and attacks are already paused, so stepping it
+           here does nothing except carry the block upwards. */
+        wave_update(&cur->wave, cur->player.x);
+
+        if (wave_lift(&cur->wave, FORM_AWAY)) {
+            s->turn     = s->incoming;
+            s->handover = HANDOVER_TICKS;
+            audio_play(SFX_STAGE);
+            /* The incoming board starts off the top of the screen so that it
+               has somewhere to fly down from. */
+            s->game[s->turn].wave.lift = FORM_AWAY;
+            wave_hold_entries(&s->game[s->turn].wave, true);
+            s->phase = TURN_ARRIVING;
+            session_log(s, "gone - next board announced");
+        }
+        return;
+
+    case TURN_ARRIVING: {
+        Game *in_seat = &s->game[s->turn];
+        game_background_update();
+
+        /* Nothing of this board attacks while it is still arriving. */
+        wave_pause_attacks(&in_seat->wave, true);
+
+        if (s->handover > 0) { --s->handover; return; }
+
+        wave_update(&in_seat->wave, in_seat->player.x);
+
+        /* Whatever this seat had parked flies back down as a block; whatever
+           had not launched yet resumes its own entry once it is home. */
+        if (wave_lift(&in_seat->wave, 0.0f)) {
+            wave_hold_entries(&in_seat->wave, false);
+            in_seat->turn_over = false;
+            s->phase = TURN_PLAYING;
+            session_log(s, "arrived - controls live");
+        }
+        return;
+    }
+
+    default:
+        break;
     }
 
     game_update(cur, in);
 
     /* A turn ends when a fighter is lost. With one seat that means nothing and
-       the flag is simply cleared; with two, the board freezes exactly where it
-       is - the respawn cannot complete while turn_over is set - and waits for
-       this seat to come round again. */
+       the flag is simply cleared. With two it starts the sequence above. */
     if (cur->turn_over || cur->finished) {
         int next = seat_next(s);
         if (next < 0 || next == s->turn) {
             cur->turn_over = false;
         } else {
-            s->turn     = next;
-            s->handover = HANDOVER_TICKS;
-            audio_play(SFX_STAGE);
-            if (cur->trace) {
-                printf("tick %d: seat %d hands over to seat %d "
-                       "(scores %d and %d)\n",
-                       cur->tick, (cur->seat) + 1, next + 1,
-                       s->game[0].score, s->game[1].score);
-            }
+            s->incoming = next;
+            s->phase    = TURN_SETTLING;
+            wave_hold_entries(&cur->wave, true);
+            session_log(s, "fighter lost - settling");
         }
     }
 
