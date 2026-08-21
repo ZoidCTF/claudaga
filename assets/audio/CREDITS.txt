@@ -26,6 +26,12 @@ Sound effects
     in the sound table rather than baked into them, so the originals stay
     byte-identical to the pack.
 
+  swoop_*.ogg     phaserDown1/2/3
+
+    from "Digital Audio" by Kenney - https://kenney.nl/assets/digital-audio
+    CC0. Unmodified; renamed only. Played at three eighths volume: one dive
+    should be noticed rather than announced.
+
 Music and jingles
 -----------------
   title.mp3       "8Bit Title Screen" by Joth

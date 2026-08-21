@@ -690,6 +690,14 @@ and every headless measurement in this project would be measuring a different
 game from the one being played. That is verified rather than asserted: a 6000
 tick traced run produces byte-identical events with sound on and with `--mute`.
 
+An enemy peeling out of formation swoops, once per attacking group rather than
+once per enemy. A boss and its two escorts leave on the same tick, so three
+copies would arrive perfectly together and simply be one sound at three times
+the volume; the overlap worth having comes from separate attacks. A burst
+launches them 24 ticks apart against swoops that run 19 to 30 ticks, so from
+the stage bursts appear onwards they land slightly out of step with each other,
+which is the whole appeal of the sound.
+
 Several effects have two or three near-identical takes and one is chosen at
 random per play, which is what stops four enemies dying inside a second from
 turning into an obvious machine-gun repeat of one sample. **Sixteen effects mix
@@ -720,6 +728,13 @@ half volume, which was the fix all along.
 
 Measuring a mix you cannot hear narrows the search. It does not make the
 choice.
+
+Two smaller things came out of playing rather than measuring. The round-start
+jingle was announcing itself over the *menu*: `game_init` builds a whole game
+behind the title screen so the menu has a starfield to draw, and building a
+stage played the stage's jingle. It is silent while a game is being set up
+rather than begun, which is a flag rather than a rule about who may call what.
+And it was simply too loud, now at five eighths.
 
 The same numbers did turn up a second problem nobody had reported: the three
 jingles peaked at 0.13 to 0.45 against effects peaking at 0.90 — up to

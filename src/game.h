@@ -93,6 +93,11 @@ typedef struct {
        is how the title screen gets a look in. */
     bool   finished;
 
+    /* Set while a game is being built rather than begun, which happens once
+       behind the title screen. Everything works as normal; it just does not
+       announce itself. */
+    bool   quiet;
+
     /* Debug aid: stops the fighter dying, so a long --at run reaches the tick
        it was asked for instead of restarting halfway. */
     bool   invulnerable;

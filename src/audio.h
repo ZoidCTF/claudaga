@@ -27,6 +27,7 @@
 typedef enum {
     SFX_SHOT,        /* the fighter fires                      */
     SFX_ENEMY_FIRE,  /* a diver fires                          */
+    SFX_DIVE,        /* an enemy peels out of formation        */
     SFX_ENEMY_DIE,
     SFX_BOSS_HIT,    /* a Boss Galaga that survived the hit    */
     SFX_PLAYER_DIE,

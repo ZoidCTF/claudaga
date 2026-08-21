@@ -46,17 +46,26 @@ typedef struct {
    file itself, which is what happened to the jingles: they arrived peaking at
    0.13 against effects peaking at 0.9, seventeen decibels down and inaudible
    under the shooting. */
-#define VOL_FULL MIX_MAX_VOLUME
-#define VOL_HALF (MIX_MAX_VOLUME / 2)
+#define VOL_FULL   MIX_MAX_VOLUME
+#define VOL_SOFT   (MIX_MAX_VOLUME * 5 / 8)
+#define VOL_HALF   (MIX_MAX_VOLUME / 2)
+#define VOL_SUBTLE (MIX_MAX_VOLUME * 3 / 8)
 
 static const SfxDef SFX_FILES[SFX_COUNT] = {
     [SFX_SHOT]       = { { "shot_0.ogg",    "shot_1.ogg",    "shot_2.ogg" },  VOL_FULL },
     [SFX_ENEMY_FIRE] = { { "efire_0.ogg",   "efire_1.ogg",   "efire_2.ogg" }, VOL_FULL },
+
+    /* The swoop as an enemy peels out of formation. Quiet on purpose: one
+       dive is meant to be noticed rather than announced, and at higher stages
+       a burst puts three or four of them in the air a few frames apart, which
+       is the point of the sound. Three takes of slightly different lengths so
+       that overlap does not come out as one sound played louder. */
+    [SFX_DIVE]       = { { "swoop_0.ogg",   "swoop_1.ogg",   "swoop_2.ogg" }, VOL_SUBTLE },
     [SFX_ENEMY_DIE]  = { { "boom_0.ogg",    "boom_1.ogg",    "boom_2.ogg" },  VOL_HALF },
     [SFX_BOSS_HIT]   = { { "bosshit_0.ogg", "bosshit_1.ogg", NULL },          VOL_FULL },
     [SFX_PLAYER_DIE] = { { "die_0.ogg",     "die_1.ogg",     NULL },          VOL_FULL },
     [SFX_BEAM]       = { { "beam_0.ogg",    NULL,            NULL },          VOL_FULL },
-    [SFX_STAGE]      = { { "jingle_stage.wav",   NULL, NULL },                VOL_FULL },
+    [SFX_STAGE]      = { { "jingle_stage.wav",   NULL, NULL },                VOL_SOFT },
     [SFX_EXTRA]      = { { "jingle_extra.wav",   NULL, NULL },                VOL_FULL },
     [SFX_PERFECT]    = { { "jingle_perfect.wav", NULL, NULL },                VOL_FULL },
 };

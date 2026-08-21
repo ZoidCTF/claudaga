@@ -186,7 +186,10 @@ void game_init(Game *g)
     g->first_stage = 1;
     wave_init(&g->wave);
     stars_init();
+
+    g->quiet = true;    /* this one is scenery for the menu, not a stage */
     game_restart(g);
+    g->quiet = false;
 
     /* After game_restart rather than before: a restart is a new game, not a
        new machine, so it leaves the high score alone - which means this is the
@@ -238,16 +241,22 @@ static bool is_challenge_stage(int stage)
 }
 
 /* Hands out whichever kind of wave the stage number calls for. */
+/* Hands out whichever kind of wave the stage number calls for.
+
+   Silent while the game is merely being set up. game_init builds a whole game
+   behind the title screen so the menu has something to draw a starfield over,
+   and that used to announce itself: the round-start jingle played over the
+   menu appearing, every launch, for a stage nobody was about to play. */
 static void start_stage(Game *g)
 {
     if (is_challenge_stage(g->stage)) {
         wave_restart_challenge(&g->wave, g->stage, (g->stage - 3) / 4);
-        audio_music(MUSIC_BONUS);
+        if (!g->quiet) audio_music(MUSIC_BONUS);
     } else {
         wave_restart(&g->wave, g->stage);
-        audio_music_stop();
+        if (!g->quiet) audio_music_stop();
     }
-    audio_play(SFX_STAGE);
+    if (!g->quiet) audio_play(SFX_STAGE);
 }
 
 /* ------------------------------------------------------------- collision */

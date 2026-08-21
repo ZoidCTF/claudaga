@@ -432,7 +432,9 @@ int main(int argc, char **argv)
        check a number is not a test anybody runs twice. */
     if (first_stage > 1) {
         game.first_stage = first_stage;
+        game.quiet = true;
         game_restart(&game);
+        game.quiet = false;
     }
 
     game.wave.show_paths = paths;

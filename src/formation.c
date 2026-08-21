@@ -868,6 +868,14 @@ static void launch_attack(Wave *w, float player_x)
     w->last_side = side;
     build_dive_path(&w->dive_paths[p], leader->pos, side, player_x);
 
+    /* One swoop for the group rather than one per enemy. A boss and its two
+       escorts leave on the same tick, so three copies would arrive perfectly
+       together and simply be the same sound at three times the volume. The
+       overlap worth having comes from separate attacks: a burst launches them
+       24 ticks apart, which is what puts several swoops in the air slightly
+       out of step with each other. */
+    audio_play(SFX_DIVE);
+
     join_dive(w, leader, p, 0.0f, 0.0f);
     if (type != TYPE_BOSS) return;
 
