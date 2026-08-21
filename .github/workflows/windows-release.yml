@@ -1,0 +1,129 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version for a test package, such as 1.2.3
+        required: true
+        default: 0.0.0-dev
+
+# A tag build can create a GitHub release. A manual build only creates an
+# Actions artifact and does not use the write permission.
+permissions:
+  contents: write
+
+# Do not publish two releases for the same tag at the same time.
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Portable ZIP and installer (x64)
+    runs-on: windows-2025
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v6
+
+      - name: Set the package version
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if ($env:GITHUB_REF_NAME -notmatch '^v(?<version>.+)$') {
+              throw "The release tag must start with 'v'."
+            }
+
+            $version = $Matches.version
+          }
+          else {
+            $version = $env:INPUT_VERSION
+          }
+
+          # Limit the value to a file-safe numeric version and an optional suffix.
+          if ($version -notmatch '^[0-9]+(?:\.[0-9]+){1,3}(?:-[0-9A-Za-z.-]+)?$') {
+            throw "The version '$version' is not valid. Use a value such as 1.2.3 or 1.2.3-beta.1."
+          }
+
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # The fetch must run before package.bat calls build.bat.
+      - name: Fetch dependencies
+        shell: cmd
+        run: call tools\fetch_deps.bat
+
+      # package.bat creates the clean release build and the portable ZIP.
+      - name: Build the portable package
+        shell: cmd
+        run: call tools\package.bat %PACKAGE_VERSION%
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+            throw "Inno Setup Compiler was not found at '$compiler'."
+          }
+
+          & $compiler "/DMyAppVersion=$env:PACKAGE_VERSION" tools\installer.iss
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup Compiler failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Verify release files
+        shell: pwsh
+        run: |
+          $releaseFiles = @(
+            "dist\claudaga-$env:PACKAGE_VERSION.zip"
+            "dist\claudaga-$env:PACKAGE_VERSION-setup.exe"
+          )
+
+          foreach ($path in $releaseFiles) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "The release build did not create '$path'."
+            }
+          }
+
+      - name: Upload the release files
+        uses: actions/upload-artifact@v7
+        with:
+          name: claudaga-${{ env.PACKAGE_VERSION }}-windows-x64
+          path: |
+            dist/claudaga-${{ env.PACKAGE_VERSION }}.zip
+            dist/claudaga-${{ env.PACKAGE_VERSION }}-setup.exe
+          if-no-files-found: error
+
+      # A pushed version tag publishes the same files that the job verified.
+      - name: Publish the GitHub release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = @(
+            "dist\claudaga-$env:PACKAGE_VERSION.zip"
+            "dist\claudaga-$env:PACKAGE_VERSION-setup.exe"
+          )
+
+          # A retry can reach this step after the release already exists.
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME @files --clobber
+          }
+          else {
+            gh release create $env:GITHUB_REF_NAME @files `
+              --verify-tag `
+              --generate-notes `
+              --title "Claudaga $env:PACKAGE_VERSION"
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub release publishing failed with exit code $LASTEXITCODE."
+          }
