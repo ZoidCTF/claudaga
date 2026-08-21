@@ -554,24 +554,43 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         break;
 
     case DIVE_LOOP: {
-        /* Three quarters of a circle on the way out, then the run in. The
-           loop's centre is pulled back on screen if the enemy was parked near
-           an edge - a loop performed off the side of the screen is just a
-           disappearance. */
-        float cx = on_screen(from.x + s * 22.0f);
-        float cy = from.y + 60.0f;
-        const float R = 34.0f;
+        /* A corkscrew: one full turn, descending the whole way through it.
+         *
+         * This began as an actual closed circle and was wrong in a way worth
+         * recording. A circle has to climb for half of its length, so the exit
+         * had to leave from the top and drop back down through the curve it had
+         * just flown - which read as the enemy curving round, hauling itself
+         * upwards, and then starting its attack over again. Plotting the
+         * sampled polyline made that obvious in about a second; reading the
+         * control points had not, twice.
+         *
+         * A turn descends without ever climbing only if it falls faster than
+         * the circle lifts. Going round once, the vertical speed is D + 2*pi*R
+         * times a sine, so the descent D has to be at least 2*pi*R for the sum
+         * never to go negative. R is set from D rather than chosen, with a
+         * little margin, which is what guarantees the shape cannot come out
+         * wrong for an enemy parked high or low in the formation. */
+        float drop = 250.0f - from.y;             /* room before the fighter */
+        if (drop < 120.0f) drop = 120.0f;
+        float R  = drop / 9.0f;                   /* well clear of 2*pi, so it never lifts */
+        float cx = on_screen(from.x + s * 10.0f);
+        float cy = from.y + R;                    /* the turn starts at `from` */
+
+        /* One turn, sampled at fifths. Even spacing matters here: two control
+           points a few pixels apart make the spline behave badly through them,
+           which is its own kind of stutter. */
+        static const float SIN5[5] = { 0.951f,  0.588f, -0.588f, -0.951f,  0.0f };
+        static const float COS5[5] = { 0.309f, -0.809f, -0.809f,  0.309f,  1.0f };
 
         c[0] = from;
-        c[1].x = from.x + s * 12.0f; c[1].y = from.y - 8.0f;
-        c[2].x = cx + s * R * 0.7f;  c[2].y = cy - R * 0.7f;     /* into it   */
-        c[3].x = cx + s * R;         c[3].y = cy;                /* outside   */
-        c[4].x = cx;                 c[4].y = cy + R;            /* bottom    */
-        c[5].x = cx - s * R;         c[5].y = cy;                /* inside    */
-        c[6].x = cx;                 c[6].y = cy - R * 0.8f;     /* over top  */
-        c[7].x = player_x + s * 22.0f; c[7].y = 222.0f;          /* and down  */
-        c[8].x = player_x - s * 52.0f; c[8].y = 330.0f;          /* away wide */
-        n = 9;
+        for (int k = 0; k < 5; ++k) {
+            float t = (float)(k + 1) / 5.0f;
+            c[k + 1].x = cx + s * R * SIN5[k];
+            c[k + 1].y = cy + t * drop - R * COS5[k];
+        }
+        c[6].x = player_x + s * 18.0f;  c[6].y = 268.0f;      /* the pass  */
+        c[7].x = player_x + s * 62.0f;  c[7].y = 340.0f;
+        n = 8;
         break;
     }
 
@@ -1797,6 +1816,22 @@ void wave_draw(Gfx *g, const Wave *w)
             Vec2 cap = { e->pos.x + o.x, e->pos.y + o.y };
             shape_draw_pal(g, SHP_FIGHTER, cap, e->heading + 180.0f, 1.0f,
                            &SHAPE_PAL_FIGHTER_CAPTURED, 1.0f);
+        }
+    }
+}
+
+void wave_dump_dives(void)
+{
+    static const char *NAME[DIVE_SHAPES] = { "peel", "loop", "cross", "plunge" };
+    Vec2 from = { 104.0f, 60.0f };      /* a boss slot, near the middle */
+    float player_x = 112.0f;
+
+    for (int shape = 0; shape < DIVE_SHAPES; ++shape) {
+        static Path p;
+        build_dive_path(&p, from, 1, player_x, shape);
+        printf("SHAPE %d %s n=%d len=%.1f\n", shape, NAME[shape], p.n, p.length);
+        for (int i = 0; i < p.n; ++i) {
+            printf("PT %d %d %.2f %.2f\n", shape, i, p.pt[i].x, p.pt[i].y);
         }
     }
 }

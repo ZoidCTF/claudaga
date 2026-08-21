@@ -257,6 +257,9 @@ bool wave_all_formed(const Wave *w);
 int  wave_divers(const Wave *w);
 void wave_print_stats(const Wave *w);
 
+/* Debug: builds each attack curve and prints its sampled polyline. */
+void wave_dump_dives(void);
+
 /* Every enemy has been shot. */
 bool wave_cleared(const Wave *w);
 

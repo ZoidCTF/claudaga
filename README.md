@@ -84,7 +84,8 @@ what the stage's difficulty works out to and how the wave behaved under it,
 `--stage N` starts on a later stage so that difficulty can be measured without
 playing up to it, `--mute` opens no audio device, `--padtest` runs the
 controller self test and exits, `--options` and `--paused` open on those screens so they can
-be screenshot, `--audiotest [DIR]` reports the mixer's capacity and measures
+be screenshot, `--divedump` prints each attack curve as a polyline,
+`--audiotest [DIR]` reports the mixer's capacity and measures
 every sound, and `--trace` logs each stage handover.
 `--shot` and `--stats` mute themselves.
 
@@ -612,8 +613,8 @@ the fighter - mirrored by side and aimed at wherever the player was. Placement
 varied and character never did, which over a whole game reads as a formula
 rather than as an attack.
 
-There are four now: the original peel, a tight **loop** on the way out before
-the run in, a **cross** that goes to one edge and comes back hard across the
+There are four now: the original peel, a **corkscrew** that turns once while
+falling, a **cross** that goes to one edge and comes back hard across the
 screen, and a **plunge** that is barely a curve at all until a late hook. Which
 one an enemy flies is chosen per attack rather than per stage - variety inside a
 stage is the point, and picking once a stage would only have moved the sameness
@@ -643,16 +644,40 @@ them on the shared exit together. The pass at the fighter is what makes a dive
 dangerous, so the exits are spread and the plunge no longer cuts back across the
 loop's approach head-on.
 
-**What is left is honest and worth stating**: swept across stages 2 to 24, the
-worst on-screen run is 28 ticks, the mean 11.7, and 4 of 23 stages cross the
-20-tick line. That is a genuine regression from a single shape, which never
-crossed it, and it is partly inherent - four curves aimed at the same fighter
-will sometimes coincide where one curve could not. One further attempt to tune
-it out, taking the loop wide before its run in, made it worse rather than
-better (7 of 23) and was reverted. The threshold was calibrated for enemies
-locked together down a whole lane, and what remains is mostly transient
-convergence near the fighter, which is what a late stage is supposed to feel
-like.
+### The corkscrew, and a lesson about tuning around a bug
+
+The second curve started life as an actual closed circle, and it was wrong. A
+circle has to climb for half of its length, so the exit had to leave from the
+top and drop back down through the curve it had just flown. On screen that read
+as the enemy curving round, hauling itself upwards, and then starting its attack
+over again - which is exactly how it was reported.
+
+Reading the control points did not show it, twice. Plotting the sampled polyline
+showed it in about a second, which is why `--divedump` exists: it builds each
+curve and prints its points, and a picture of the four side by side is worth
+more than any amount of staring at coordinates.
+
+A turn that never climbs has to fall faster than the circle lifts. Going round
+once, the vertical speed is `D + 2*pi*R*sin`, so the descent `D` must be at
+least `2*pi*R` for that never to go negative. `R` is therefore derived from `D`
+rather than chosen - at `D/9` there is enough margin that the descent never even
+slows enough to bunch the curve up, which at `D/7` produced a 16-degree-per-
+sample corner where the turn nearly stalled. It measures 6.0 degrees now, which
+is smoother than the cross or the plunge.
+
+**And it dissolved a problem I had been treating as inherent.** The previous
+version of this section reported that four curves put the convoy metric over its
+line on 4 of 23 stages, called that a real regression, and said it was partly
+unavoidable because four curves aimed at one fighter will sometimes coincide. It
+was not unavoidable and it was not inherent: it was mostly this bug. The broken
+loop climbed back into bands other curves were crossing and then cut down
+through them. With the corkscrew in place the sweep reads **worst 19 ticks, mean
+8.9, and nothing over the line at all**.
+
+Two geometry changes had been made to chase that number down, and one of them -
+taking the loop wide before its run in - made it worse and was reverted. Both
+were tuning around the symptoms of a bug that had not been found yet. Somebody
+playing the game found it in a minute.
 
 ### Measuring "flying together" is not measuring distance
 

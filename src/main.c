@@ -321,7 +321,7 @@ static void usage(void)
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "                [--stage N] [--mute] [--padtest] [--options]\n"
-            "                [--audiotest [DIR]] [--paused]\n"
+            "                [--audiotest [DIR]] [--paused] [--divedump]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -471,6 +471,7 @@ int main(int argc, char **argv)
     int         first_stage = 1;
     bool        mute      = false;
     bool        padtest   = false;
+    bool        divedump  = false;
     bool        show_options = false;
     bool        show_paused  = false;
     const char *audiodir  = NULL;
@@ -495,6 +496,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--trace"))                    trace = true;
         else if (!strcmp(argv[i], "--mute"))                     mute = true;
         else if (!strcmp(argv[i], "--padtest"))                  padtest = true;
+        else if (!strcmp(argv[i], "--divedump"))                 divedump = true;
         else if (!strcmp(argv[i], "--audiotest")) {
             audioreport = true;
             if (i + 1 < argc && argv[i + 1][0] != 0x2D) audiodir = argv[++i];
@@ -520,6 +522,8 @@ int main(int argc, char **argv)
 
     /* Before the window: the self test wants SDL up but has nothing to draw,
        and opening a window it would immediately close is noise. */
+    if (divedump) { wave_dump_dives(); return 0; }
+
     if (padtest) {
         if (SDL_Init(SDL_INIT_EVENTS) < 0) {
             fprintf(stderr, "SDL would not start: %s' + BS + 'n", SDL_GetError());
