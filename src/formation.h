@@ -92,6 +92,7 @@ typedef enum {
     PATH_TOP_DIVE_L, PATH_TOP_DIVE_R,
     PATH_SWEEP_L,    PATH_SWEEP_R,
     PATH_RETURN_L,   PATH_RETURN_R,
+    PATH_CORNER_L,   PATH_CORNER_R,   /* a diagonal from one top corner */
     /* Challenging-stage passes. Unlike the others these leave the screen
        rather than ending below the formation, and a bonus round picks two of
        the four. Every right-hand id follows its left-hand one, which is what
@@ -132,6 +133,8 @@ typedef struct {
     float dive_speed;        /* pixels per tick down a dive    */
     int   diver_cap;         /* dive groups allowed at once    */
     int   fire_chance_in;    /* 1-in-N per diver per tick      */
+    int   entry_fire;        /* 1-in-N per enemy flying in, 0 = never */
+    int   entry_set;         /* which entry this wave flew in on      */
     int   burst_len;         /* extra attacks tacked on to one */
     int   burst_left;        /* still owed on the current one  */
     int   last_side;         /* which edge the last dive broke towards */
@@ -194,6 +197,13 @@ typedef struct {
        something rather than just being computed. */
     int   peak_divers;
 
+    /* Missiles fired, and how many of them came from the wave on its way in
+       rather than from an attack. Entry fire is easy to get wrong in the
+       direction of far too much - forty enemies cross the screen during an
+       entry - so it is a thing to count rather than eyeball. */
+    int   shots_fired;
+    int   shots_on_entry;
+
     /* Steepest missile fired, in degrees away from straight down. A shot that
        approaches 90 travels along the fighter's own row, which cannot be
        dodged, so this is the number that says the aim cone is holding. */
@@ -209,7 +219,13 @@ void wave_init(Wave *w);       /* builds paths and slots; call once */
    the wave is about to be, which is what sets the difficulty: the same forty
    enemies attack faster, more of them at once, and shoot more often as it
    climbs. */
-void wave_restart(Wave *w, int stage);
+/* `entry` selects which of the entry sets the wave flies in on. It is a count
+   of ordinary stages rather than the stage number, and the caller works it out
+   because the caller owns the schedule. That distinction is not fussiness: the
+   challenging stages fall every fourth stage, which is exactly the number of
+   entry sets, so indexing on the stage number aliased perfectly and one of the
+   four never came up in a whole run. */
+void wave_restart(Wave *w, int stage, int entry);
 
 /* A challenging stage instead of an ordinary one. `variant` picks the round -
    which two passes the flyers fly, which flyer fields it, and the rhythm they

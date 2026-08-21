@@ -134,6 +134,17 @@ static const Vec2 CTRL_CHAL_D[] = {
     { 138, 196 }, { 104, 226 }, { 118, 276 }, { 132, 330 },
 };
 
+/* A long diagonal from one top corner to the opposite low edge, a loop there,
+   and back up the middle. It crosses the whole screen rather than working one
+   half of it, which is what makes it read differently from the dive and the
+   sweep when it turns up among them. Like the others it ends below the
+   formation heading north, so the same join finishes the trip. */
+static const Vec2 CTRL_CORNER[] = {
+    { -26, -20 }, {  30,  40 }, {  84,  92 }, { 140, 140 },
+    { 178, 186 }, { 176, 226 }, { 140, 240 }, { 108, 220 },
+    { 100, 184 }, {  96, 148 },
+};
+
 /* --------------------------------------------------------------- flights */
 
 /* Eight enemies per flight, alternating between two mirrored paths so the
@@ -147,12 +158,48 @@ typedef struct {
     int    spacing;      /* ticks between one enemy and the next */
 } Flight;
 
-static const Flight FLIGHTS[FLIGHT_COUNT] = {
-    { PATH_TOP_DIVE_L, PATH_TOP_DIVE_R,   0, 11 },
-    { PATH_SWEEP_L,    PATH_SWEEP_R,    130, 11 },
-    { PATH_TOP_DIVE_R, PATH_TOP_DIVE_L, 260, 11 },
-    { PATH_SWEEP_R,    PATH_SWEEP_L,    390, 11 },
-    { PATH_SWEEP_L,    PATH_SWEEP_R,    520, 11 },
+/* Entries, one set of five flights each, cycled by stage.
+ *
+ * The arcade shuffles how a wave assembles rather than replaying one
+ * choreography forever, and the entry is the part of a stage a player watches
+ * without being able to do much about - which is exactly the part that goes
+ * stale first. Four sets, drawn from four path shapes and their mirrors, with
+ * their own cadences: the interval between flights and the gap between enemies
+ * inside one change the rhythm as much as the curves change the shape.
+ *
+ * The first set is the original, so stage one still opens the way it always
+ * did. Whatever a player learns the game by should not be the variation. */
+#define ENTRY_SETS 4
+
+static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
+    {   /* the original: dives and sweeps, alternating sides */
+        { PATH_TOP_DIVE_L, PATH_TOP_DIVE_R,   0, 11 },
+        { PATH_SWEEP_L,    PATH_SWEEP_R,    130, 11 },
+        { PATH_TOP_DIVE_R, PATH_TOP_DIVE_L, 260, 11 },
+        { PATH_SWEEP_R,    PATH_SWEEP_L,    390, 11 },
+        { PATH_SWEEP_L,    PATH_SWEEP_R,    520, 11 },
+    },
+    {   /* corners across the middle, tighter and quicker */
+        { PATH_CORNER_L,   PATH_CORNER_R,     0, 10 },
+        { PATH_SWEEP_R,    PATH_SWEEP_L,    120, 10 },
+        { PATH_CORNER_R,   PATH_CORNER_L,   240, 10 },
+        { PATH_TOP_DIVE_L, PATH_TOP_DIVE_R, 360, 10 },
+        { PATH_CORNER_L,   PATH_CORNER_R,   480,  9 },
+    },
+    {   /* down the outside first, then across - slower and wider */
+        { PATH_RETURN_L,   PATH_RETURN_R,     0, 12 },
+        { PATH_TOP_DIVE_R, PATH_TOP_DIVE_L, 140, 12 },
+        { PATH_CORNER_L,   PATH_CORNER_R,   280, 11 },
+        { PATH_RETURN_R,   PATH_RETURN_L,   420, 12 },
+        { PATH_SWEEP_L,    PATH_SWEEP_R,    550, 11 },
+    },
+    {   /* everything at once: the shortest gaps of the four */
+        { PATH_SWEEP_L,    PATH_SWEEP_R,      0,  9 },
+        { PATH_CORNER_R,   PATH_CORNER_L,   110,  9 },
+        { PATH_TOP_DIVE_L, PATH_TOP_DIVE_R, 220,  9 },
+        { PATH_RETURN_L,   PATH_RETURN_R,   330, 10 },
+        { PATH_CORNER_L,   PATH_CORNER_R,   440,  9 },
+    },
 };
 
 #define ENTRY_SPEED  2.6f    /* pixels per tick along an entry or return path */
@@ -266,6 +313,13 @@ static const Flight FLIGHTS[FLIGHT_COUNT] = {
    clamped into a cone about straight down, so there is always enough downward
    travel to step aside from. */
 #define ENEMY_SHOT_SPEED  2.3f
+/* How much less often an enemy flying into formation shoots than one
+   attacking. Not a small number: an entry puts forty enemies across the screen
+   in eleven seconds, so matching the dive rate would be a wall of fire during
+   the one stretch a player is only watching. Nothing at all shoots on the way
+   in during stage one - the first wave is where the game is learnt. */
+#define ENTRY_FIRE_RATIO 5
+
 #define FIRE_CHANCE_IN    150     /* per diving enemy, per tick, stage 1 */
 #define FIRE_CHANCE_IN_END 68     /* and at the far end of the ramp      */
 #define FIRE_MIN_HEIGHT   44.0f   /* must be this far above the fighter's row */
@@ -475,6 +529,7 @@ void wave_init(Wave *w)
     path_build(&w->paths[PATH_TOP_DIVE_L], CTRL_TOP_DIVE, ARRAY_COUNT(CTRL_TOP_DIVE));
     path_build(&w->paths[PATH_SWEEP_L],    CTRL_SWEEP,    ARRAY_COUNT(CTRL_SWEEP));
     path_build(&w->paths[PATH_RETURN_L],   CTRL_RETURN,   ARRAY_COUNT(CTRL_RETURN));
+    path_build(&w->paths[PATH_CORNER_L],   CTRL_CORNER,   ARRAY_COUNT(CTRL_CORNER));
     path_build(&w->paths[PATH_CHAL_A_L],   CTRL_CHAL_A,   ARRAY_COUNT(CTRL_CHAL_A));
     path_build(&w->paths[PATH_CHAL_B_L],   CTRL_CHAL_B,   ARRAY_COUNT(CTRL_CHAL_B));
     path_build(&w->paths[PATH_CHAL_C_L],   CTRL_CHAL_C,   ARRAY_COUNT(CTRL_CHAL_C));
@@ -482,6 +537,7 @@ void wave_init(Wave *w)
     path_mirror(&w->paths[PATH_TOP_DIVE_R], &w->paths[PATH_TOP_DIVE_L]);
     path_mirror(&w->paths[PATH_SWEEP_R],    &w->paths[PATH_SWEEP_L]);
     path_mirror(&w->paths[PATH_RETURN_R],   &w->paths[PATH_RETURN_L]);
+    path_mirror(&w->paths[PATH_CORNER_R],   &w->paths[PATH_CORNER_L]);
     path_mirror(&w->paths[PATH_CHAL_A_R],   &w->paths[PATH_CHAL_A_L]);
     path_mirror(&w->paths[PATH_CHAL_B_R],   &w->paths[PATH_CHAL_B_L]);
     path_mirror(&w->paths[PATH_CHAL_C_R],   &w->paths[PATH_CHAL_C_L]);
@@ -496,7 +552,7 @@ void wave_init(Wave *w)
        different attack patterns while a whole run stays reproducible. */
     w->rng = 0x5A17C0DEu;
 
-    wave_restart(w, 1);
+    wave_restart(w, 1, 0);
 }
 
 /* Works the stage number into the handful of numbers that describe how hard a
@@ -518,6 +574,7 @@ static void set_difficulty(Wave *w, int stage)
     w->fire_chance_in  = FIRE_CHANCE_IN +
         (int)((FIRE_CHANCE_IN_END - FIRE_CHANCE_IN) * t);
     w->burst_len       = (int)(BURST_LEN_END * t + 0.5f);
+    w->entry_fire      = (stage >= 2) ? w->fire_chance_in * ENTRY_FIRE_RATIO : 0;
     w->sway_period     = SWAY_PERIOD_1 + (SWAY_PERIOD_END - SWAY_PERIOD_1) * t;
 }
 
@@ -556,6 +613,8 @@ static void wave_reset_common(Wave *w)
     w->shot_max_deg = 0.0f;
     w->peak_divers  = 0;
     w->max_convoy   = 0;
+    w->shots_fired  = 0;
+    w->shots_on_entry = 0;
     w->park_off_min =  1e9f;
     w->park_off_max = -1e9f;
     memset(w->convoy_run, 0, sizeof w->convoy_run);
@@ -565,9 +624,14 @@ static void wave_reset_common(Wave *w)
     for (int i = 0; i < MAX_DIVERS; ++i) w->dive_refs[i] = 0;
     for (int i = 0; i < PATH_COUNT; ++i)  w->lane_free[i] = 0;
     for (int i = 0; i < MAX_ENEMY_SHOTS; ++i) w->shot[i].alive = false;
+    /* Chosen by the caller and settled before this runs. It comes from the
+       stage rather than the generator, so a given stage always assembles the
+       same way - a pattern nobody can rely on is not a pattern to learn. */
+    int set = w->entry_set;
+
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         Enemy *e = &w->enemies[i];
-        const Flight *fl = &FLIGHTS[i / FLIGHT_SIZE];
+        const Flight *fl = &ENTRIES[set][i / FLIGHT_SIZE];
         int within = i % FLIGHT_SIZE;
 
         e->shape       = s_slots[i].shape;
@@ -592,10 +656,11 @@ static void wave_reset_common(Wave *w)
     }
 }
 
-void wave_restart(Wave *w, int stage)
+void wave_restart(Wave *w, int stage, int entry)
 {
     w->challenge      = false;
     w->challenge_hits = 0;
+    w->entry_set      = ((entry % ENTRY_SETS) + ENTRY_SETS) % ENTRY_SETS;
     set_difficulty(w, stage);
     wave_reset_common(w);
 }
@@ -629,6 +694,7 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
     wave_reset_common(w);
     w->challenge      = true;
     w->challenge_hits = 0;
+    w->entry_fire     = 0;   /* a bonus round is a shooting gallery, not a fight */
 
     if (variant < 0) variant = 0;
     int r = variant % SHP_BONUS_COUNT;
@@ -1022,6 +1088,7 @@ static void enemy_fire(Wave *w, const Enemy *e, float player_x)
            above turn plenty of would-be shots away, and a sound for a missile
            that was never fired is a sound with nothing on screen to explain
            it. */
+        ++w->shots_fired;
         audio_play(SFX_ENEMY_FIRE);
         return;
     }
@@ -1172,6 +1239,15 @@ void wave_update(Wave *w, float player_x)
             } else {
                 e->pos     = path_point(p, e->s);
                 e->heading = path_heading(p, e->s);
+
+                /* From the second stage on the wave shoots on its way in, as
+                   the arcade's does. The same aim rules apply as to a diver,
+                   so an entry shot is no less dodgeable than any other. */
+                if (w->entry_fire && rng_below(w, w->entry_fire) == 0) {
+                    int before = w->shots_fired;
+                    enemy_fire(w, e, player_x);
+                    if (w->shots_fired > before) ++w->shots_on_entry;
+                }
             }
             break;
 
@@ -1330,6 +1406,22 @@ void wave_print_stats(const Wave *w)
            w->max_convoy, CONVOY_TICKS);
     printf("parked enemies sat between %+.1f and %+.1f px from their slots\n",
            w->park_off_min, w->park_off_max);
+    printf("closest two enemies sharing a path: %.1f px\n", w->min_lane_gap);
+    if (w->challenge) {
+        printf("challenging stage - no entry set, and nothing shoots\n");
+    } else {
+        printf("entry set: %d of %d\n", w->entry_set, ENTRY_SETS);
+    }
+
+    /* Everything above holds whether or not anyone has attacked yet, so it is
+       printed first. A short run measured over an entry has no dives in it by
+       definition, and the numbers that describe an entry were once behind the
+       early return below - which made the one case they exist for the one case
+       that would not print them. */
+    printf("missiles fired: %d total, %d of them on the way in\n",
+           w->shots_fired, w->shots_on_entry);
+    printf("steepest missile fired: %.1f deg off straight down (90 = undodgeable)\n",
+           w->shot_max_deg);
 
     int total = w->dives_boss + w->dives_butterfly + w->dives_bee;
     if (total == 0) { printf("no dives yet\n"); return; }
@@ -1340,9 +1432,6 @@ void wave_print_stats(const Wave *w)
            w->dives_butterfly, 100.0 * w->dives_butterfly / total);
     printf("  bee        %4d  (%.1f%%)  over 20 slots\n",
            w->dives_bee, 100.0 * w->dives_bee / total);
-    printf("closest two enemies sharing a path: %.1f px\n", w->min_lane_gap);
-    printf("steepest missile fired: %.1f deg off straight down (90 = undodgeable)\n",
-           w->shot_max_deg);
 }
 
 int wave_divers(const Wave *w)

@@ -240,6 +240,14 @@ static bool is_challenge_stage(int stage)
     return stage >= 3 && ((stage - 3) % 4) == 0;
 }
 
+/* How many challenging stages come before this one. Used to count the ordinary
+   stages, which is what picks the entry the wave flies in on - a bonus round
+   flies no entry, so counting it would waste a set. */
+static int challenges_before(int stage)
+{
+    return stage <= 3 ? 0 : (stage - 4) / 4 + 1;
+}
+
 /* Hands out whichever kind of wave the stage number calls for. */
 /* Hands out whichever kind of wave the stage number calls for.
 
@@ -253,7 +261,8 @@ static void start_stage(Game *g)
         wave_restart_challenge(&g->wave, g->stage, (g->stage - 3) / 4);
         if (!g->quiet) audio_music(MUSIC_BONUS);
     } else {
-        wave_restart(&g->wave, g->stage);
+        wave_restart(&g->wave, g->stage,
+                     g->stage - 1 - challenges_before(g->stage));
         if (!g->quiet) audio_music_stop();
     }
     if (!g->quiet) audio_play(SFX_STAGE);

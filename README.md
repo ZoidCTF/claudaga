@@ -354,6 +354,15 @@ enough downward travel to step aside from. `--stats` reports the steepest shot
 fired over a run; it reads 45 degrees with the rules in - the clamp binding at
 exactly its ceiling - and 78 without.
 
+**From the second stage on, the wave shoots on its way in**, as the arcade's
+does. The same aim rules apply as to a diver, so an entry shot is no less
+dodgeable than any other - but the rate is a fifth of a diver's, because an
+entry puts forty enemies across the screen in eleven seconds and matching the
+dive rate would be a wall of fire during the one stretch a player is only
+watching. Stage one holds fire entirely: the first wave is where the game is
+learnt. Measured over the entry alone, that comes to 8 missiles at stage 2 and
+16 by stage 12, and `--stats` counts them separately from the rest.
+
 Clearing every enemy pauses briefly and sends in the next stage.
 
 Only **one player missile** may be in the air at a time. Missing therefore
@@ -510,6 +519,32 @@ the row will hold.
 One shield shape drawn six ways. On the cabinet these are six separate pieces of
 art, but the whole job of a flag is to be told apart from the others at a
 glance, and colour alone does that — so it is one drawing and six palettes.
+
+## How a wave assembles, and why not always the same way
+
+Four entry sets cycle, each five flights drawn from four path shapes and their
+mirrors, each with its own cadence - the interval between flights and the gap
+between enemies within one change the rhythm as much as the curves change the
+shape. The first set is the original, so stage one still opens the way it always
+did; whatever a player learns the game by should not be the variation.
+
+The set is chosen from the stage rather than from the generator, so a given
+stage always assembles the same way. A pattern nobody can rely on is not a
+pattern to learn.
+
+### One set never came up
+
+The first version indexed on the stage number: `(stage - 1) % 4`. Challenging
+stages fall on 3, 7, 11 - every fourth stage - and there are four entry sets, so
+`(stage - 1) % 4 == 2` picked out *exactly* the stages that fly no entry at all.
+One of the four was dead in every run of the game, and nothing was wrong with
+it.
+
+Nothing about the code looked wrong either. It was visible only in a contact
+sheet of the four entries side by side, where the third tile was a bonus round
+instead of the pattern it was captioned with. The fix counts ordinary stages
+rather than all of them, and the caller does the counting because the caller is
+what owns the schedule.
 
 ## Difficulty, and the shape of an attack
 
