@@ -272,6 +272,9 @@ bool wave_all_formed(const Wave *w);
    those would wait forever. */
 bool wave_settled(const Wave *w);
 
+/* Names what is still moving, for when a wait for quiet does not end. */
+void wave_print_unsettled(const Wave *w);
+
 /* Where the block sits when it is parked off the top of the screen. */
 #define FORM_AWAY (-(float)(FORM_Y + FORM_ROWS * FORM_PITCH + 24))
 

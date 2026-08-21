@@ -58,6 +58,12 @@ typedef enum { MENU_ONE, MENU_TWO, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuIte
 #define SEATS 2
 #define HANDOVER_TICKS 110
 
+/* The longest the game will wait for a board to go quiet before packing it
+   away anyway. Ten seconds is far past anything a real settle takes - the
+   measured range is 42 to 229 ticks - so reaching it means something is
+   stuck, and going on is better than stopping. */
+#define SETTLE_LIMIT 600
+
 /* Changing hands is a sequence, not an instant.
  *
  * A fighter is lost, and the first version swapped seats on that same tick.
@@ -83,6 +89,7 @@ typedef struct {
     int       handover;  /* ticks left on the PLAYER N banner */
     TurnPhase phase;
     int       incoming;  /* the seat being handed to, during a change */
+    int       settling;  /* ticks spent waiting for the board to settle */
 
     /* The session's own clock, which is the only one that runs continuously -
        each seat's game tick stops while the other is playing, so a per-seat
@@ -132,6 +139,7 @@ static void session_begin(Session *s, int seats)
     s->handover = 0;
     s->phase    = TURN_PLAYING;
     s->incoming = 0;
+    s->settling = 0;
     s->tick     = 0;
     for (int i = 0; i < SEATS; ++i) {
         s->game[i].demo = false;
@@ -162,11 +170,36 @@ static void session_tick(Session *s, const Input *in, bool to_title,
         /* The outgoing board keeps running - the explosion has to play and the
            divers have to get home - but nothing new goes out to meet them, or
            the air would never clear. The player is already gone, so the input
-           handed on is nobody's. */
-        game_update(cur, in);
+           handed on is nobody's.
+
+           A finished game will not run itself. game_update returns at once
+           once `finished` is set, so calling it here advances nothing: no
+           wave, no effects, and therefore a board that never settles. That is
+           a hang, and it was one - a capture takes the last fighter without
+           ending the turn, so the hand-over began *after* the game had
+           finished, with a captor still flying home and nothing left to move
+           it. What still has to finish is stepped directly instead. */
+        if (cur->finished) {
+            game_background_update();
+            fx_update(&cur->fx);
+            wave_update(&cur->wave, cur->player.x);
+        } else {
+            game_update(cur, in);
+        }
+
+        /* And a bounded wait regardless. Settling is the game waiting on
+           itself, which is the one shape of wait that can fail to end; a
+           handover that takes a moment too long is a blemish, one that never
+           comes is the game stopping. */
         if (game_turn_settled(cur)) {
             session_log(s, "settled - the board leaves");
-            s->phase = TURN_LEAVING;
+            s->settling = 0;
+            s->phase    = TURN_LEAVING;
+        } else if (++s->settling > SETTLE_LIMIT) {
+            session_log(s, "GAVE UP waiting to settle - the board leaves anyway");
+            if (cur->trace) wave_print_unsettled(&cur->wave);
+            s->settling = 0;
+            s->phase    = TURN_LEAVING;
         }
         return;
 
@@ -232,7 +265,15 @@ static void session_tick(Session *s, const Input *in, bool to_title,
         } else {
             s->incoming = next;
             s->phase    = TURN_SETTLING;
+            s->settling = 0;
+
+            /* Nothing else goes out. Entries are held, and attacks are stopped
+               too - wave_pause_attacks is otherwise only reached on the live
+               path, which stops running the moment a game is over, so a board
+               packing itself away carried on launching dives at a player who
+               was no longer there and could never go quiet. */
             wave_hold_entries(&cur->wave, true);
+            wave_pause_attacks(&cur->wave, true);
             session_log(s, "fighter lost - settling");
         }
     }

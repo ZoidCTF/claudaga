@@ -838,6 +838,32 @@ So it is four phases now:
 **Control returns only at the end.** A board still arriving is not a board
 anybody can be asked to fight.
 
+### Two ways settling failed to end
+
+Settling is the game waiting on itself, which is the one shape of wait that can
+fail, and it failed twice.
+
+`game_update` returns immediately once a game is `finished`, so calling it in
+the settling phase advanced nothing at all - no wave, no effects - and the board
+could never go quiet. A capture is what exposed it: it costs a fighter without
+ending the turn, so when a capture took the last one, the hand-over began
+*after* the game had finished, with a captor still flying home and nothing left
+to move it. The screen simply stopped. A finished board now has the parts that
+still have to run stepped directly.
+
+Then it still would not settle, and the reason was the opposite problem:
+`wave_pause_attacks` is only reached on the live path, which also stops the
+moment a game is over, so a board packing itself away carried on **launching
+fresh dives** at a player who was no longer there. Something was always in the
+air. Entries and attacks are both stopped now when a hand-over begins.
+
+There is a bounded wait behind both, because a handover that takes a moment too
+long is a blemish and one that never comes is the game stopping. It reports what
+was still moving when it gives up, which is how the second cause was found - the
+first attempt printed only that it had given up, which said nothing. Across
+forty thousand ticks of two-player it now completes thirty-five hand-overs and
+never reaches the limit.
+
 The whole thing is one number: a `lift` offset added to every parked slot, the
 same way `sway` is. A formation that keeps its shape and translates *is* a
 formation flying off in formation - there is nothing else to model. It cost one

@@ -1711,6 +1711,21 @@ void wave_hold_entries(Wave *w, bool hold)
     w->entries_held = hold;
 }
 
+void wave_print_unsettled(const Wave *w)
+{
+    static const char *NAME[] = {
+        "waiting", "entering", "to-slot", "formed", "diving", "beaming", "dead"
+    };
+    int n[7] = { 0 };
+    for (int i = 0; i < MAX_ENEMIES; ++i) n[w->enemies[i].state]++;
+    printf("  still moving:");
+    for (int i = 0; i < 7; ++i) {
+        if (i == ENEMY_WAITING || i == ENEMY_FORMED || i == ENEMY_DEAD) continue;
+        if (n[i]) printf(" %d %s", n[i], NAME[i]);
+    }
+    printf(" (entries %s)\n", w->entries_held ? "held" : "free");
+}
+
 bool wave_settled(const Wave *w)
 {
     for (int i = 0; i < MAX_ENEMIES; ++i) {
