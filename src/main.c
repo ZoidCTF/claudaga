@@ -674,6 +674,9 @@ typedef struct {
     int  idle;
     int  demo;
 
+    /* Where Tab came from, so it can go back there. */
+    View tab_home;
+
     /* Not owned here, but every menu action needs them. Passing them through
        each handler instead would mean five signatures changing every time a
        setting is added. */
@@ -813,16 +816,32 @@ static void ui_start_demo(Ui *u, Game *game)
     SDL_Log("attract: nobody home, showing the game off");
 }
 
+/* Tab visits the tools and comes back where it started.
+ *
+ * It used to walk the whole view list, which from the title screen meant its
+ * first stop was the game - so the key the title screen labels TAB TOOLS
+ * dropped you into a wave instead. The tools are the shape browser and the
+ * pose check; play and the title are places to return to, not stations on the
+ * way round. */
 static void ui_next_view(Ui *u)
 {
-    if (!u->options) u->view = (View)((u->view + 1) % VIEW_COUNT);
+    if (u->options) return;
+
+    switch (u->view) {
+    case VIEW_SHAPES: u->view = VIEW_POSE;    break;
+    case VIEW_POSE:   u->view = u->tab_home;  break;
+    default:
+        u->tab_home = u->view;
+        u->view     = VIEW_SHAPES;
+        break;
+    }
 }
 
 int main(int argc, char **argv)
 {
     const char *shot_path = NULL;
     Ui          ui        = { VIEW_TITLE, MENU_ONE, false, true, 0,
-                              OPT_SFX, false, 0, 0, NULL, NULL };
+                              OPT_SFX, false, 0, 0, VIEW_TITLE, NULL, NULL };
     Settings    settings;
     bool        view_set  = false;
     int         scale     = 3;

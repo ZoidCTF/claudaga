@@ -952,17 +952,21 @@ void game_draw(Gfx *gfx, const Game *g)
        spelled out in flags along the bottom, so the score is the one that
        earns the space.
 
-       The label of whichever seat is playing blinks, which is how the arcade
-       says whose turn it is without a word of explanation. */
+       1UP is always on the left and 2UP always on the right, whoever is
+       holding the controls. Drawing the *current* seat on the left meant the
+       two scores changed places every time the turn did, so a player watching
+       their own number had to find it again after every handover. The blink is
+       what says whose turn it is; the position says whose score it is, and
+       those are two different questions. */
     char buf[32];
     bool two = (g->other_score >= 0);
     bool lit = ((g->tick / 20) % 2) == 0;
 
-    const char *mine  = (g->seat == 0) ? "1UP" : "2UP";
-    const char *their = (g->seat == 0) ? "2UP" : "1UP";
+    int p1 = (g->seat == 0) ? g->score : g->other_score;
+    int p2 = (g->seat == 0) ? g->other_score : g->score;
 
-    font_draw(gfx, 4, 2, (two && !lit) ? DIM : WHITE, mine);
-    snprintf(buf, sizeof buf, "%d", g->score);
+    font_draw(gfx, 4, 2, (two && g->seat == 0 && !lit) ? DIM : WHITE, "1UP");
+    snprintf(buf, sizeof buf, "%d", p1);
     font_draw(gfx, 4, 10, YELLOW, buf);
 
     {
@@ -973,9 +977,10 @@ void game_draw(Gfx *gfx, const Game *g)
     }
 
     if (two) {
-        font_draw(gfx, GAME_W - font_width(their) - 4, 2, DIM, their);
-        snprintf(buf, sizeof buf, "%d", g->other_score);
-        font_draw(gfx, GAME_W - font_width(buf) - 4, 10, DIM, buf);
+        SDL_Color lab = (g->seat == 1 && !lit) ? DIM : WHITE;
+        font_draw(gfx, GAME_W - font_width("2UP") - 4, 2, lab, "2UP");
+        snprintf(buf, sizeof buf, "%d", p2);
+        font_draw(gfx, GAME_W - font_width(buf) - 4, 10, YELLOW, buf);
     } else {
         if (wave_is_challenge(&g->wave)) {
             snprintf(buf, sizeof buf, "BONUS %d", g->stage);

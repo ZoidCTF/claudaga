@@ -74,6 +74,12 @@ it decide, which is how the menu gets a look in. A headless run has nobody to
 show a menu to, so `--at` starts a fresh game instead; both go through the same
 function, so the two cannot drift apart.
 
+Tab visits the tools and comes back where it started - shape browser, pose
+check, and then whichever of the title or the game it was called from. It used
+to walk the whole view list, which from the title screen meant its first stop
+was the game, so the key the title screen labels TAB TOOLS dropped you into a
+wave.
+
 Flags: `--title` / `--scene` / `--pose` / `--shapes` pick a starting view — and
 `--at` or `--stats` without one implies the game, since there is nothing to
 fast-forward on a menu. Others: `--subject N` picks within it, `--scale N` sets
@@ -977,6 +983,12 @@ The HUD gives the right-hand slot to the other seat's score rather than the
 stage, which is spelled out in flags along the bottom anyway, and blinks the
 label of whoever is playing - which is how the arcade says whose turn it is
 without a word of explanation.
+
+1UP stays on the left and 2UP on the right whoever is holding the controls. The
+first version drew the *current* seat on the left, so the two scores changed
+places at every handover and a player watching their own number had to find it
+again afterwards. The blink says whose turn it is; the position says whose score
+it is. Those are two different questions and they need two different answers.
 
 One bug worth recording because of how it read: the debug flags were applied to
 seat one only, so a traced two-player run logged only half its own handovers.
