@@ -115,6 +115,7 @@ typedef struct {
        path out from under it. */
     Path  dive_paths[MAX_DIVERS];
     int   dive_refs[MAX_DIVERS];
+    int   path_shape[MAX_DIVERS];   /* which curve each pool slot is flying */
 
     /* Missiles the divers have fired. They outlive the enemy that fired them,
        so they belong to the wave rather than to an enemy. */
@@ -135,6 +136,7 @@ typedef struct {
     int   fire_chance_in;    /* 1-in-N per diver per tick      */
     int   entry_fire;        /* 1-in-N per enemy flying in, 0 = never */
     int   entry_set;         /* which entry this wave flew in on      */
+    int   dive_shapes;       /* how many attack curves are in play    */
     int   burst_len;         /* extra attacks tacked on to one */
     int   burst_left;        /* still owed on the current one  */
     int   last_side;         /* which edge the last dive broke towards */
@@ -166,6 +168,11 @@ typedef struct {
        rather than eyeballed off the screen. */
     int   dives_boss, dives_butterfly, dives_bee;
 
+    /* And of which curve they flew. A shape that is in the table but never
+       chosen is invisible from the outside - the entry sets had exactly that
+       fault - so the count is kept rather than assumed. */
+    int   dives_by_shape[4];
+
     /* Closest two enemies have come while flying the same path. Enemies
        finishing a dive together used to re-enter stacked, so this is the
        number that says whether the lane queue is doing its job. */
@@ -191,6 +198,11 @@ typedef struct {
 
     int   max_convoy;
     int   convoy_run[MAX_DIVERS][MAX_DIVERS];
+
+    /* Where the worst one happened, and between which two curves. A number on
+       its own says something is wrong; these say what to go and look at. */
+    float convoy_y;
+    int   convoy_shape[2];
 
     /* Most dive groups in the air at once. The difficulty ramp raises the
        ceiling on this, so it is the number that says the ramp is doing

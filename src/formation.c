@@ -490,19 +490,124 @@ static int rng_below(Wave *w, int n)
    leaving the bottom of the screen. `side` decides which way it breaks, and
    aiming the lower half at the player's column is what stops a wave of dives
    from tracing the same line every time. */
-static void build_dive_path(Path *out, Vec2 from, int side, float player_x)
+/* The attack curves.
+ *
+ * Every dive used to be one shape - rise out, curl over, fall away, swing in
+ * past the fighter - mirrored by side and aimed at wherever the player was.
+ * Placement varied and character never did, which over a whole game reads as a
+ * formula rather than as an attack. There are four now, and which one an
+ * enemy flies is chosen per attack rather than per stage: variety inside a
+ * stage is the point, and picking once a stage would only have moved the
+ * sameness up a level.
+ *
+ * All four are built from the leader's parked position, the side it breaks
+ * towards and the fighter's column, and all four end below the bottom of the
+ * screen, which is what hands the enemy to the return lane.
+ *
+ * They deliberately leave by different doors. The first version had every
+ * shape hook back to almost the same point - the loop exited at player_x - 6s
+ * and the plunge at player_x - 4s, two pixels apart - and that turned out to
+ * matter: with one shape, two groups were separated along the curve by the
+ * time between their launches, but four shapes take four different times to
+ * reach the tail, which destroys that separation and lands them on the shared
+ * exit together. It measured as half a second of two groups flying as one. The
+ * pass at the fighter is what makes a dive dangerous; where it leaves
+ * afterwards is free, so the exits are spread. */
+typedef enum {
+    DIVE_PEEL,     /* the original: out, over, and down across the screen */
+    DIVE_LOOP,     /* a tight loop on the way out, then a run at the player */
+    DIVE_CROSS,    /* out to one edge, then hard across and down */
+    DIVE_PLUNGE,   /* steep, straight and late-hooking */
+    DIVE_SHAPES
+} DiveShape;
+
+/* Keeps a control point far enough inside the screen that a curve drawn round
+   it is still something the player can see happen. Only the deliberately wide
+   points are clamped; the rest are near the formation already. */
+static float on_screen(float x)
+{
+    const float M = 26.0f;
+    if (x < M)              return M;
+    if (x > GAME_W - M)     return GAME_W - M;
+    return x;
+}
+
+static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
+                            int shape)
 {
     float s = (float)side;
-    Vec2 c[7];
-    c[0] = from;
-    c[1].x = from.x + s * 13.0f;  c[1].y = from.y -  9.0f;   /* rise out    */
-    c[2].x = from.x + s * 35.0f;  c[2].y = from.y + 15.0f;   /* curl over   */
-    c[3].x = from.x + s * 30.0f;  c[3].y = from.y + 62.0f;   /* fall away   */
-    c[4].x = (from.x + player_x) * 0.5f - s * 22.0f;
-    c[4].y = from.y + 122.0f;                                /* swing in    */
-    c[5].x = player_x + s * 26.0f; c[5].y = 246.0f;          /* past the    */
-    c[6].x = player_x - s * 10.0f; c[6].y = 324.0f;          /* player, out */
-    path_build(out, c, 7);
+    Vec2  c[10];
+    int   n = 0;
+
+    switch (shape) {
+    default:
+    case DIVE_PEEL:
+        c[0] = from;
+        c[1].x = from.x + s * 13.0f;  c[1].y = from.y -  9.0f;   /* rise out  */
+        c[2].x = from.x + s * 35.0f;  c[2].y = from.y + 15.0f;   /* curl over */
+        c[3].x = from.x + s * 30.0f;  c[3].y = from.y + 62.0f;   /* fall away */
+        c[4].x = (from.x + player_x) * 0.5f - s * 22.0f;
+        c[4].y = from.y + 122.0f;                                /* swing in  */
+        c[5].x = player_x + s * 26.0f; c[5].y = 246.0f;          /* past the  */
+        c[6].x = player_x - s * 12.0f; c[6].y = 324.0f;          /* player    */
+        n = 7;
+        break;
+
+    case DIVE_LOOP: {
+        /* Three quarters of a circle on the way out, then the run in. The
+           loop's centre is pulled back on screen if the enemy was parked near
+           an edge - a loop performed off the side of the screen is just a
+           disappearance. */
+        float cx = on_screen(from.x + s * 22.0f);
+        float cy = from.y + 60.0f;
+        const float R = 34.0f;
+
+        c[0] = from;
+        c[1].x = from.x + s * 12.0f; c[1].y = from.y - 8.0f;
+        c[2].x = cx + s * R * 0.7f;  c[2].y = cy - R * 0.7f;     /* into it   */
+        c[3].x = cx + s * R;         c[3].y = cy;                /* outside   */
+        c[4].x = cx;                 c[4].y = cy + R;            /* bottom    */
+        c[5].x = cx - s * R;         c[5].y = cy;                /* inside    */
+        c[6].x = cx;                 c[6].y = cy - R * 0.8f;     /* over top  */
+        c[7].x = player_x + s * 22.0f; c[7].y = 222.0f;          /* and down  */
+        c[8].x = player_x - s * 52.0f; c[8].y = 330.0f;          /* away wide */
+        n = 9;
+        break;
+    }
+
+    case DIVE_CROSS:
+        /* Out to the near edge and then hard across the screen, so the enemy
+           arrives from the side the player is not watching. */
+        c[0] = from;
+        c[1].x = from.x + s * 16.0f;              c[1].y = from.y + 8.0f;
+        c[2].x = on_screen(from.x + s * 52.0f);   c[2].y = from.y + 44.0f;
+        c[3].x = on_screen(GAME_W * 0.5f + s * 86.0f);
+        c[3].y = from.y + 104.0f;
+        c[4].x = on_screen(GAME_W * 0.5f - s * 62.0f); c[4].y = 214.0f;
+        c[5].x = player_x - s * 26.0f;            c[5].y = 272.0f;
+        c[6].x = player_x + s * 34.0f;            c[6].y = 340.0f;
+        n = 7;
+        break;
+
+    case DIVE_PLUNGE:
+        /* Barely a curve at all until the end. It gives the least warning of
+           the four, which is why it is the last one a stage unlocks. */
+        c[0] = from;
+        c[1].x = from.x + s * 7.0f;   c[1].y = from.y + 16.0f;
+        c[2].x = from.x + s * 2.0f;   c[2].y = from.y + 64.0f;
+        c[3].x = from.x - s * 10.0f;  c[3].y = from.y + 124.0f;
+        /* The hook stays on the side the plunge broke towards rather than
+           cutting back across. Crossing over made it run head-on through the
+           loop's approach, which comes the other way - two attacks arriving on
+           the fighter from opposite sides met in the middle and travelled as
+           one for better than half a second. Parallel, they pass. */
+        c[4].x = player_x + s * 20.0f; c[4].y = 236.0f;          /* the hook  */
+        c[5].x = player_x + s * 48.0f; c[5].y = 322.0f;
+        n = 6;
+        break;
+    }
+
+    path_build(out, c, n);
 }
 
 static int dive_path_alloc(Wave *w)
@@ -575,6 +680,15 @@ static void set_difficulty(Wave *w, int stage)
         (int)((FIRE_CHANCE_IN_END - FIRE_CHANCE_IN) * t);
     w->burst_len       = (int)(BURST_LEN_END * t + 0.5f);
     w->entry_fire      = (stage >= 2) ? w->fire_chance_in * ENTRY_FIRE_RATIO : 0;
+
+    /* Attack curves are unlocked rather than ramped. Stage one flies the one
+       shape the game has always flown, so a first wave is still the thing a
+       player learns the game on; the steeper and less readable ones arrive
+       once there is something to be surprised by. */
+    w->dive_shapes = 1;
+    if (stage >= 2) w->dive_shapes = 2;
+    if (stage >= 4) w->dive_shapes = 3;
+    if (stage >= 8) w->dive_shapes = DIVE_SHAPES;
     w->sway_period     = SWAY_PERIOD_1 + (SWAY_PERIOD_END - SWAY_PERIOD_1) * t;
 }
 
@@ -608,6 +722,7 @@ static void wave_reset_common(Wave *w)
     w->tick = 0;
     w->next_attack = 0;
     w->dives_boss = w->dives_butterfly = w->dives_bee = 0;
+    for (int i = 0; i < DIVE_SHAPES; ++i) w->dives_by_shape[i] = 0;
     w->captive_holder = -1;
     w->min_lane_gap = 1e9f;
     w->shot_max_deg = 0.0f;
@@ -940,7 +1055,10 @@ static void launch_attack(Wave *w, float player_x)
        rather than immediately crossing the whole formation. */
     int side = (leader->pos.x < GAME_W * 0.5f) ? -1 : 1;
     w->last_side = side;
-    build_dive_path(&w->dive_paths[p], leader->pos, side, player_x);
+    int shape = rng_below(w, w->dive_shapes);
+    w->path_shape[p] = shape;
+    build_dive_path(&w->dive_paths[p], leader->pos, side, player_x, shape);
+    if (shape >= 0 && shape < DIVE_SHAPES) ++w->dives_by_shape[shape];
 
     /* One swoop for the group rather than one per enemy. A boss and its two
        escorts leave on the same tick, so three copies would arrive perfectly
@@ -1402,8 +1520,14 @@ void wave_print_stats(const Wave *w)
            w->fire_chance_in, SWAY_AMP, w->sway_period);
     printf("peak dive groups in the air at once: %d (cap %d)\n",
            w->peak_divers, w->diver_cap);
+    static const char *SHAPE[4] = { "peel", "loop", "cross", "plunge" };
     printf("longest two dive groups flew together: %d ticks (%d = convoying)\n",
            w->max_convoy, CONVOY_TICKS);
+    if (w->max_convoy > 0) {
+        printf("  worst was %s and %s at y %.0f (the fighter flies at %d)\n",
+               SHAPE[w->convoy_shape[0] & 3], SHAPE[w->convoy_shape[1] & 3],
+               w->convoy_y, PLAYER_Y);
+    }
     printf("parked enemies sat between %+.1f and %+.1f px from their slots\n",
            w->park_off_min, w->park_off_max);
     printf("closest two enemies sharing a path: %.1f px\n", w->min_lane_gap);
@@ -1432,6 +1556,12 @@ void wave_print_stats(const Wave *w)
            w->dives_butterfly, 100.0 * w->dives_butterfly / total);
     printf("  bee        %4d  (%.1f%%)  over 20 slots\n",
            w->dives_bee, 100.0 * w->dives_bee / total);
+    printf("attack curves in play: %d of %d\n", w->dive_shapes, DIVE_SHAPES);
+    static const char *SHAPE_NAME[DIVE_SHAPES] = { "peel", "loop", "cross", "plunge" };
+    for (int i = 0; i < DIVE_SHAPES; ++i) {
+        printf("  %-8s %4d  (%.1f%%)\n", SHAPE_NAME[i], w->dives_by_shape[i],
+               100.0 * w->dives_by_shape[i] / total);
+    }
 }
 
 int wave_divers(const Wave *w)
@@ -1462,37 +1592,66 @@ static void track_lane_gap(Wave *w)
     }
 }
 
+/* True while an enemy is somewhere the player can actually see it. */
+static bool on_camera(Vec2 p)
+{
+    return p.y > -CELL && p.y < (float)GAME_H && p.x > -CELL && p.x < GAME_W + CELL;
+}
+
 /* Tracks, for every pair of dive groups in the air, how long they have been
    close. Within a group the escorts are meant to fly close to their boss, so
-   only enemies on different dive paths are compared. */
+   only enemies on different dive paths are compared.
+
+   Only while both are on screen. This measures whether two attacks read as one
+   smear, and two sprites overlapping below the bottom edge do not read as
+   anything. Leaving it out mattered: giving the dives four shapes instead of
+   one sent this metric from 0 ticks to 45 and looked like a bad regression,
+   when every one of those overlaps was happening at y 310 to 322 - twenty to
+   thirty pixels past the bottom of a 288-pixel screen, on the tails of curves
+   that had already left. The dives were fine. The measurement was counting
+   things nobody could see. */
 static void track_convoys(Wave *w)
 {
     float best[MAX_DIVERS][MAX_DIVERS];
-    for (int a = 0; a < MAX_DIVERS; ++a)
-        for (int b = 0; b < MAX_DIVERS; ++b) best[a][b] = 1e9f;
+    float at_y[MAX_DIVERS][MAX_DIVERS];
+    for (int a = 0; a < MAX_DIVERS; ++a) {
+        for (int b = 0; b < MAX_DIVERS; ++b) {
+            best[a][b] = 1e9f;
+            at_y[a][b] = 0.0f;
+        }
+    }
 
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         const Enemy *ea = &w->enemies[i];
         if (ea->state != ENEMY_DIVING || ea->dive_path < 0) continue;
+        if (!on_camera(ea->pos)) continue;
         for (int j = i + 1; j < MAX_ENEMIES; ++j) {
             const Enemy *eb = &w->enemies[j];
             if (eb->state != ENEMY_DIVING || eb->dive_path < 0) continue;
             if (eb->dive_path == ea->dive_path) continue;
+            if (!on_camera(eb->pos)) continue;
 
             int a = ea->dive_path, b = eb->dive_path;
             if (a > b) { int t = a; a = b; b = t; }
 
             float dx = ea->pos.x - eb->pos.x, dy = ea->pos.y - eb->pos.y;
             float d  = sqrtf(dx * dx + dy * dy);
-            if (d < best[a][b]) best[a][b] = d;
+            if (d < best[a][b]) {
+                best[a][b] = d;
+                at_y[a][b] = (ea->pos.y + eb->pos.y) * 0.5f;
+            }
         }
     }
 
     for (int a = 0; a < MAX_DIVERS; ++a) {
         for (int b = a + 1; b < MAX_DIVERS; ++b) {
             if (best[a][b] < CONVOY_DIST) {
-                if (++w->convoy_run[a][b] > w->max_convoy)
-                    w->max_convoy = w->convoy_run[a][b];
+                if (++w->convoy_run[a][b] > w->max_convoy) {
+                    w->max_convoy      = w->convoy_run[a][b];
+                    w->convoy_y        = at_y[a][b];
+                    w->convoy_shape[0] = w->path_shape[a];
+                    w->convoy_shape[1] = w->path_shape[b];
+                }
             } else {
                 w->convoy_run[a][b] = 0;
             }

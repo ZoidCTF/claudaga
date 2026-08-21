@@ -605,6 +605,55 @@ or a burst landing on the bosses — four of them, often all on one side — fin
 nobody eligible and falls straight back to the near half, which is exactly the
 case that goes wrong.
 
+### Four attack curves, not one
+
+Every dive used to be one shape - rise out, curl over, fall away, swing in past
+the fighter - mirrored by side and aimed at wherever the player was. Placement
+varied and character never did, which over a whole game reads as a formula
+rather than as an attack.
+
+There are four now: the original peel, a tight **loop** on the way out before
+the run in, a **cross** that goes to one edge and comes back hard across the
+screen, and a **plunge** that is barely a curve at all until a late hook. Which
+one an enemy flies is chosen per attack rather than per stage - variety inside a
+stage is the point, and picking once a stage would only have moved the sameness
+up a level. They unlock rather than ramp: stage one flies the one shape the game
+has always flown, the loop joins at 2, the cross at 4 and the plunge at 8.
+`--stats` counts dives by curve, because a shape that is in the table but never
+chosen is invisible from outside - the entry sets had exactly that fault.
+
+### The metric was measuring things nobody could see
+
+Adding the four sent the convoy figure from 0 ticks to 45 and looked like a bad
+regression. It was not. Every one of those overlaps was happening at **y 310 to
+322 - twenty to thirty pixels below the bottom of a 288-pixel screen**, on the
+tails of curves that had already left. Two sprites overlapping off the bottom
+edge do not read as anything.
+
+The measurement was at fault, not the dives, and it took making the metric
+report *where* the worst case happened to see it. It only counts pairs while
+both are on camera now.
+
+What that exposed underneath was real, though, and worth fixing: the shapes all
+hooked back to almost the same exit - the loop left at `player_x - 6s` and the
+plunge at `player_x - 4s`, two pixels apart. With one shape, two groups were
+separated along the curve by the time between their launches; four shapes take
+four different times to reach the tail, which destroys that separation and lands
+them on the shared exit together. The pass at the fighter is what makes a dive
+dangerous, so the exits are spread and the plunge no longer cuts back across the
+loop's approach head-on.
+
+**What is left is honest and worth stating**: swept across stages 2 to 24, the
+worst on-screen run is 28 ticks, the mean 11.7, and 4 of 23 stages cross the
+20-tick line. That is a genuine regression from a single shape, which never
+crossed it, and it is partly inherent - four curves aimed at the same fighter
+will sometimes coincide where one curve could not. One further attempt to tune
+it out, taking the loop wide before its run in, made it worse rather than
+better (7 of 23) and was reverted. The threshold was calibrated for enemies
+locked together down a whole lane, and what remains is mostly transient
+convergence near the fighter, which is what a late stage is supposed to feel
+like.
+
 ### Measuring "flying together" is not measuring distance
 
 The first attempt at a detector took the closest two enemies in different dive
