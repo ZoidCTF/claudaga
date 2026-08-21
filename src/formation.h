@@ -219,6 +219,7 @@ typedef struct {
     /* Where the worst one happened, and between which two curves. A number on
        its own says something is wrong; these say what to go and look at. */
     float convoy_y;
+    int   max_convoy_high;   /* worst pair while both are still above the aim */
     int   convoy_shape[2];
 
     /* Most dive groups in the air at once. The difficulty ramp raises the
@@ -242,7 +243,13 @@ typedef struct {
     bool  attacks_paused;    /* transient, while the player is not there */
 } Wave;
 
-void wave_init(Wave *w);       /* builds paths and slots; call once */
+void wave_init(Wave *w);
+
+/* Shifts the seed every wave starts from. For the measuring harness: a metric
+   taken over one seed is a sample, not a number, and several of the wave
+   figures are worst-of over a run, which is the kind of statistic that swings
+   hardest. Tuning against a single seed means tuning against luck. */
+void wave_set_seed(unsigned base);       /* builds paths and slots; call once */
 
 /* Sends everyone back off-screen to fly in again. `stage` is the stage number
    the wave is about to be, which is what sets the difficulty: the same forty
@@ -310,6 +317,19 @@ void wave_print_stats(const Wave *w);
 
 /* Debug: builds each attack curve and prints its sampled polyline. */
 void wave_dump_dives(void);
+
+/* The fastest an attack curve travels sideways while it is level with the
+   fighter, in pixels per tick, taken over every row it can start from, every
+   column the fighter can stand in, and both sides it can break towards.
+ *
+ * A dive is allowed through the fighter's row - watching one come down at you
+ * is the game. What it may not do is turn along that row and come at the
+ * fighter faster than the fighter can move, because then there is nowhere to
+ * go: it makes PLAYER_SPEED a tick and cannot outrun anything quicker.
+ *
+ * `worst_shape` receives which curve was responsible. */
+float wave_dive_sideways(const Wave *w, int *worst_shape);
+const char *wave_dive_name(int shape);
 
 /* Every enemy has been shot. */
 bool wave_cleared(const Wave *w);

@@ -117,8 +117,10 @@ what the stage's difficulty works out to and how it behaved under it; `--trace`
 logs stage handovers, turn changes and the capture chain. `--padtest` drives a
 virtual controller through the input layer and checks what comes out,
 `--audiotest` measures every sound, and `--divedump` prints each attack curve as
-a polyline. `--stage N`, `--players N`, `--autofire`, `--observe` and `--mute`
-set a run up. `claudaga --help` lists the lot.
+a polyline. `--stage N`, `--players N`, `--autofire`, `--observe`, `--mute` and
+`--seed N` set a run up; several of the wave figures are worst-of over a
+run, so they want sampling across seeds rather than reading once.
+`claudaga --help` lists the lot.
 
 The commit history carries the reasoning behind most of what is here: why the
 paths are shaped as they are, which measurement caught which bug, and what was

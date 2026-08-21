@@ -662,7 +662,7 @@ static void usage(void)
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "                [--stage N] [--mute] [--padtest] [--options]\n"
             "                [--audiotest [DIR]] [--paused] [--divedump] [--demo]\n"
-            "                [--players 1|2]\n"
+            "                [--players 1|2] [--seed N]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -886,6 +886,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--scale")   && i + 1 < argc)  scale = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--at")      && i + 1 < argc)  warmup = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--stats")   && i + 1 < argc)  stats = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--seed")    && i + 1 < argc)  wave_set_seed((unsigned)atoi(argv[++i]));
         else if (!strcmp(argv[i], "--stage")   && i + 1 < argc)  first_stage = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--paths"))                    paths = true;
         else if (!strcmp(argv[i], "--observe"))                  observe = true;

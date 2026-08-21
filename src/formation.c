@@ -549,10 +549,192 @@ static float on_screen(float x)
     return x;
 }
 
-static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
-                            int shape)
+/* The approach every attack curve makes once it is near the fighter, and the
+   one rule all four of them have to obey.
+ *
+ * A dive is allowed to come down through the fighter - watching one drop on you
+ * is the game. What it may not do is turn along the fighter's row and come at
+ * it sideways, because there is then nowhere to go: the fighter makes
+ * PLAYER_SPEED a tick and cannot outrun a dive at DIVE_SPEED_END.
+ *
+ * All four curves used to do exactly that, for the same reason. Each one ended
+ * with a control point sitting on the player's column, and the point before it
+ * was wherever that curve happened to have got to - so the further the fighter
+ * stood from that, the flatter and faster the closing leg became. From a corner
+ * the loop's was ten across for one down: a bee that turned and flew horizontally
+ * into the fighter at nearly three times the speed it could move.
+ *
+ * The lining-up therefore happens AIM_LEAD_UP above the aim - between 44 and 68
+ * pixels clear of the fighter's row - with the whole width of the screen still
+ * available to do it in and the fighter below watching it happen. From the aim
+ * down, the curve may only drift sideways by AIM_SLOPE of its drop, which is
+ * PLAYER_SPEED over DIVE_SPEED_END: the definition, in one ratio, of "the
+ * fighter can still get out of the way".
+ *
+ * The points are spaced so that the Catmull-Rom tangents at the aim and at the
+ * fighter's row both come out at exactly AIM_SLOPE. Equal tangents on a straight
+ * chord give a straight segment, so the stretch that actually crosses the
+ * fighter is a line at a known angle rather than something a spline decided.
+ * `with_lead` is for a curve that has already arrived lined up under its own
+ * steam and does not need the extra point.
+ *
+ * Measured over 12 stages and 8 seeds, before and after: the fastest an attack
+ * crosses the fighter's row sideways went from 4.3 px/tick, which is the whole
+ * dive speed and means dead horizontal, to 1.5 against the fighter's 1.6. */
+/* How far either side of the fighter's row still counts as level with it. A
+   little wider than the radius that kills, so a shave counts too. */
+#define FIGHTER_BAND 12.0f
+
+#define AIM_LEAD_UP  20.0f    /* how far above the aim a curve lines up   */
+#define AIM_Y_MIN    216.0f   /* the highest a curve commits to its line  */
+#define AIM_Y_VARY   24       /* and how much lower it may happen instead */
+/* The ceiling on those two is not a free choice. Everything from the aim down
+   is a straight line at a known angle, but the leg that lines up on it is not:
+   its tangent still points back at wherever the curve came from, so it can be
+   as flat as it likes. That leg has to finish before the fighter's band starts.
+   Letting the aim reach 252 put the end of it exactly on the band's top edge,
+   and the sideways figure went straight back over the limit to 1.9. */
+typedef char aim_lines_up_above_the_band[
+    (AIM_Y_MIN + AIM_Y_VARY <= PLAYER_Y - FIGHTER_BAND) ? 1 : -1];
+#define AIM_EXIT_Y   340.0f
+
+/* How much of the rule to apply, as a multiple of "the fighter can outrun it".
+   At 1.0 an attack crossing the fighter's row can never travel sideways faster
+   than the fighter does, so there is always somewhere to go. Raising it was
+   measured rather than assumed, in case the rule was costing more than it was
+   worth: at 2.0 the curves are freer and the convoy figure improves by about
+   one tick in fifteen, which is nothing set against giving up the guarantee.
+   It stays at 1.0. The knob is here so that a difficulty pass can weaken this
+   deliberately and know exactly what it is weakening. */
+#define AIM_TILT     1.00f
+#define AIM_SLOPE    (AIM_TILT * PLAYER_SPEED / DIVE_SPEED_END)
+
+/* Where an attack aims relative to the fighter, how hard it slants on the way
+ * past, and at what height it commits. Drawn once per launch.
+ *
+ * These three exist to keep attacks apart, because a shared approach is a
+ * funnel and the convoy check said so as soon as one was introduced. All three
+ * were then ablated over the same 576 runs rather than argued about, and the
+ * result is worth writing down plainly: each is worth roughly two ticks of the
+ * convoy figure above the approach, and none of them is decisive. Turning any
+ * one off moves the number from 10 to 12; the mean overall barely moves at all.
+ * They are kept because they are nearly free and they all point the same way,
+ * not because any of them solved it.
+ *
+ * What did not work is more interesting. The first attempt was a handful of
+ * fixed lanes, and widening them from 11px to 21px barely moved anything: the
+ * pairs that convoy are the ones that drew the same lane, and five lanes across
+ * four curves collide constantly once a stage is busy. Quantising was the
+ * mistake, so the offset is drawn from a pixel-wide range instead.
+ *
+ * Missing the fighter is correct, not a side effect. An attack that always ends
+ * on its exact column is one it has to move for every single time, which is the
+ * opposite of giving it somewhere to go. */
+#define AIM_SPREAD    20      /* pixels either side of the fighter        */
+
+/* Where each curve aims, as an offset from the fighter towards the side it
+   broke to. Ordered loop, cross, plunge, peel across that axis and spaced wider
+   than the distance the convoy check calls flying together, so two attacks in
+   the air at once are held apart by construction rather than by luck. */
+#define AIM_OUTER     26.0f
+#define AIM_INNER      9.0f
+#define AIM_SLANT_MIN 0.35f   /* share of AIM_SLOPE; 1.0 is the full tilt */
+#define AIM_SLANTS    8
+
+typedef struct { float off; float slant; float y; } Aim;
+
+static Aim aim_pick(Wave *w)
 {
-    float s = (float)side;
+    Aim a;
+    a.off   = (float)(rng_below(w, 2 * AIM_SPREAD + 1) - AIM_SPREAD);
+    a.slant = AIM_SLANT_MIN + (1.0f - AIM_SLANT_MIN)
+                            * (float)rng_below(w, AIM_SLANTS)
+                            / (float)(AIM_SLANTS - 1);
+    /* The altitude a curve commits at. Marginally the most useful of the
+       three, and free to do: the tangents come out at AIM_SLOPE because the
+       four points of the approach are collinear, and they are collinear
+       whatever the spacing between them, so this can move without weakening
+       anything below it. */
+    a.y     = AIM_Y_MIN + (float)rng_below(w, AIM_Y_VARY + 1);
+    return a;
+}
+
+/* Clamped less tightly than on_screen does it: the spread is the whole point
+   and an edge that folded it back together would undo this. */
+static float aim_column(float player_x, float bias, Aim aim)
+{
+    const float M = 14.0f;
+    float x = player_x + bias + aim.off;
+    if (x < M)              return M;
+    if (x > GAME_W - M)     return GAME_W - M;
+    return x;
+}
+
+/* Where a curve has to have arrived by, AIM_LEAD_UP above where it aims. */
+static float aim_lead_x(float x, float sweep)
+{
+    return x - sweep * AIM_SLOPE * AIM_LEAD_UP;
+}
+
+/* A curve's own shape runs from the formation down to wherever this particular
+   attack lines up, and that varies. Two wrong answers came before this one.
+ *
+ * Pulling every body up to a constant height to make room for the approach
+ * squeezed all four shapes into the top 170px of a 288px screen, and the
+ * traffic up there crowded accordingly: convoying above the approach went from
+ * 8 ticks to 12, the same fault as down below and entirely self-inflicted.
+ *
+ * Clipping the last point instead gave the height back but kept each shape as
+ * wide as it was drawn, and a manoeuvre that loses height without losing width
+ * turns harder in the same arc. The sharpest turn on the cross went from 97
+ * degrees per 12px of travel to 172 - a bee that stops dead and reverses.
+ *
+ * So the shape scales. Its points are placed as fractions of the room it has,
+ * and its sideways excursions scale with the same factor, which keeps a squashed
+ * dive the same manoeuvre rather than a tighter one. */
+#define BODY_GAP   14.0f
+#define BODY_SPAN  124.0f   /* the height these shapes were drawn at */
+
+static float body_span(float from_y, float lead_y)
+{
+    float span = lead_y - BODY_GAP - from_y;
+    return span > 40.0f ? span : 40.0f;
+}
+
+static float body_scale(float span)
+{
+    /* The clamps are guards, not tuning: over the formation as it stands the
+       factor runs about 0.6 to 1.0 and neither end binds. They are here so that
+       moving a row, or the aim, cannot quietly produce a dive squashed to
+       nothing. */
+    float k = span / BODY_SPAN;
+    if (k < 0.55f) k = 0.55f;
+    if (k > 1.15f) k = 1.15f;
+    return k;
+}
+
+static int aim_tail(Vec2 *c, int n, float x, float sweep, float aim_y,
+                    int with_lead)
+{
+    if (with_lead) {
+        c[n].x = aim_lead_x(x, sweep);  c[n].y = aim_y - AIM_LEAD_UP;  ++n;
+    }
+    c[n].x = x;  c[n].y = aim_y;  ++n;
+    c[n].x = x + sweep * AIM_SLOPE * ((float)PLAYER_Y - aim_y);
+    c[n].y = (float)PLAYER_Y;  ++n;                        /* across the row */
+    c[n].x = x + sweep * AIM_SLOPE * (AIM_EXIT_Y - aim_y);
+    c[n].y = AIM_EXIT_Y;  ++n;                             /* and gone       */
+    return n;
+}
+
+static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
+                            int shape, Aim aim)
+{
+    float s     = (float)side;
+    float slant = aim.slant;
+    float lead  = aim.y - AIM_LEAD_UP;   /* where this one has to be lined up */
+    float span  = body_span(from.y, lead);
+    float scale = body_scale(span);
     Vec2  c[10];
     int   n = 0;
 
@@ -560,14 +742,13 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
     default:
     case DIVE_PEEL:
         c[0] = from;
-        c[1].x = from.x + s * 13.0f;  c[1].y = from.y -  9.0f;   /* rise out  */
-        c[2].x = from.x + s * 35.0f;  c[2].y = from.y + 15.0f;   /* curl over */
-        c[3].x = from.x + s * 30.0f;  c[3].y = from.y + 62.0f;   /* fall away */
+        c[1].x = from.x + s * 13.0f * scale;  c[1].y = from.y - 9.0f * scale;  /* rise out  */
+        c[2].x = from.x + s * 35.0f * scale;  c[2].y = from.y + 0.12f * span; /* curl over */
+        c[3].x = from.x + s * 30.0f * scale;  c[3].y = from.y + 0.51f * span; /* fall away */
         c[4].x = (from.x + player_x) * 0.5f - s * 22.0f;
-        c[4].y = from.y + 122.0f;                                /* swing in  */
-        c[5].x = player_x + s * 26.0f; c[5].y = 246.0f;          /* past the  */
-        c[6].x = player_x - s * 12.0f; c[6].y = 324.0f;          /* player    */
-        n = 7;
+        c[4].y = from.y + span;                                  /* swing in  */
+        n = aim_tail(c, 5, aim_column(player_x, s * AIM_OUTER, aim), s * slant,
+                     aim.y, 1);
         break;
 
     case DIVE_LOOP: {
@@ -587,10 +768,16 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
          * never to go negative. R is set from D rather than chosen, with a
          * little margin, which is what guarantees the shape cannot come out
          * wrong for an enemy parked high or low in the formation. */
-        float drop = 250.0f - from.y;             /* room before the fighter */
-        if (drop < 120.0f) drop = 120.0f;
+        /* The turn is sized to finish exactly where this dive lines up, and its centre
+           slides across to the aim column as it goes round, so it comes out of
+           the last quarter already lined up. Spreading the sideways travel over
+           a whole revolution is what makes it a corkscrew leaning towards the
+           fighter rather than a loop followed by a sprint. */
+        float drop = lead - from.y;               /* room before the approach */
+        if (drop < 60.0f) drop = 60.0f;
         float R  = drop / 9.0f;                   /* well clear of 2*pi, so it never lifts */
-        float cx = on_screen(from.x + s * 10.0f);
+        float x0 = on_screen(from.x + s * 10.0f);
+        float x1 = aim_lead_x(aim_column(player_x, -s * AIM_OUTER, aim), s * slant);
         float cy = from.y + R;                    /* the turn starts at `from` */
 
         /* One turn, sampled at fifths. Even spacing matters here: two control
@@ -601,13 +788,15 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
 
         c[0] = from;
         for (int k = 0; k < 5; ++k) {
-            float t = (float)(k + 1) / 5.0f;
+            float t  = (float)(k + 1) / 5.0f;
+            float cx = x0 + (x1 - x0) * t;
             c[k + 1].x = cx + s * R * SIN5[k];
             c[k + 1].y = cy + t * drop - R * COS5[k];
         }
-        c[6].x = player_x + s * 18.0f;  c[6].y = 268.0f;      /* the pass  */
-        c[7].x = player_x + s * 62.0f;  c[7].y = 340.0f;
-        n = 8;
+        /* The turn's last point is the lined-up one, so the approach does not
+           need to add its own. */
+        n = aim_tail(c, 6, aim_column(player_x, -s * AIM_OUTER, aim), s * slant,
+                     aim.y, 0);
         break;
     }
 
@@ -615,31 +804,42 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         /* Out to the near edge and then hard across the screen, so the enemy
            arrives from the side the player is not watching. */
         c[0] = from;
-        c[1].x = from.x + s * 16.0f;              c[1].y = from.y + 8.0f;
-        c[2].x = on_screen(from.x + s * 52.0f);   c[2].y = from.y + 44.0f;
-        c[3].x = on_screen(GAME_W * 0.5f + s * 86.0f);
-        c[3].y = from.y + 104.0f;
-        c[4].x = on_screen(GAME_W * 0.5f - s * 62.0f); c[4].y = 214.0f;
-        c[5].x = player_x - s * 26.0f;            c[5].y = 272.0f;
-        c[6].x = player_x + s * 34.0f;            c[6].y = 340.0f;
-        n = 7;
+        c[1].x = from.x + s * 16.0f * scale;          c[1].y = from.y + 0.06f * span;
+        c[2].x = on_screen(from.x + s * 52.0f * scale);
+        c[2].y = from.y + 0.35f * span;
+        /* Reined in from 86/46 over 0.84 of the span. The turnaround at the
+           edge is the sharpest thing any of these curves does, and at the full
+           throw over a squashed span it was doubling back through 130 degrees
+           in twelve pixels of travel. */
+        c[3].x = on_screen(GAME_W * 0.5f + s * 74.0f * scale);
+        c[3].y = from.y + 0.72f * span;
+        /* The screen is crossed well above the fighter now, not level with it.
+           Both of these used to be fixed - the same x from a constant, the same
+           y from a constant - so every cross ever flown passed through one of
+           two points and they funnelled. It was in nine of the eleven worst
+           convoying pairs. Carrying a share of the launching slot through keeps
+           the shape and separates the traffic. */
+        c[4].x = on_screen(GAME_W * 0.5f - s * 40.0f * scale
+                           + (from.x - GAME_W * 0.5f) * 0.30f);
+        c[4].y = from.y + span;
+        n = aim_tail(c, 5, aim_column(player_x, -s * AIM_INNER, aim), s * slant,
+                     aim.y, 1);
         break;
 
     case DIVE_PLUNGE:
         /* Barely a curve at all until the end. It gives the least warning of
            the four, which is why it is the last one a stage unlocks. */
         c[0] = from;
-        c[1].x = from.x + s * 7.0f;   c[1].y = from.y + 16.0f;
-        c[2].x = from.x + s * 2.0f;   c[2].y = from.y + 64.0f;
-        c[3].x = from.x - s * 10.0f;  c[3].y = from.y + 124.0f;
+        c[1].x = from.x + s * 7.0f * scale;   c[1].y = from.y + 0.13f * span;
+        c[2].x = from.x + s * 2.0f * scale;   c[2].y = from.y + 0.52f * span;
+        c[3].x = from.x - s * 10.0f * scale;  c[3].y = from.y + span;
         /* The hook stays on the side the plunge broke towards rather than
            cutting back across. Crossing over made it run head-on through the
            loop's approach, which comes the other way - two attacks arriving on
            the fighter from opposite sides met in the middle and travelled as
            one for better than half a second. Parallel, they pass. */
-        c[4].x = player_x + s * 20.0f; c[4].y = 236.0f;          /* the hook  */
-        c[5].x = player_x + s * 48.0f; c[5].y = 322.0f;
-        n = 6;
+        n = aim_tail(c, 4, aim_column(player_x, s * AIM_INNER, aim), s * slant,
+                     aim.y, 1);
         break;
     }
 
@@ -662,6 +862,10 @@ static void dive_path_release(Wave *w, int i)
 }
 
 /* ----------------------------------------------------------------- setup */
+
+static u32 wave_seed_base = 0;
+
+void wave_set_seed(unsigned base) { wave_seed_base = (u32)base; }
 
 void wave_init(Wave *w)
 {
@@ -691,7 +895,7 @@ void wave_init(Wave *w)
 
     /* Seeded once, here rather than in wave_restart, so successive stages get
        different attack patterns while a whole run stays reproducible. */
-    w->rng = 0x5A17C0DEu;
+    w->rng = 0x5A17C0DEu + wave_seed_base * 0x9E3779B9u;
 
     wave_restart(w, 1, 0);
 }
@@ -765,6 +969,7 @@ static void wave_reset_common(Wave *w)
     w->shot_max_deg = 0.0f;
     w->peak_divers  = 0;
     w->max_convoy   = 0;
+    w->max_convoy_high = 0;
     w->shots_fired  = 0;
     w->shots_on_entry = 0;
     w->park_off_min =  1e9f;
@@ -1097,7 +1302,8 @@ static void launch_attack(Wave *w, float player_x)
     w->last_side = side;
     int shape = rng_below(w, w->dive_shapes);
     w->path_shape[p] = shape;
-    build_dive_path(&w->dive_paths[p], leader->pos, side, player_x, shape);
+    build_dive_path(&w->dive_paths[p], leader->pos, side, player_x, shape,
+                    aim_pick(w));
     if (shape >= 0 && shape < DIVE_SHAPES) ++w->dives_by_shape[shape];
 
     /* One swoop for the group rather than one per enemy. A boss and its two
@@ -1585,6 +1791,8 @@ void wave_print_stats(const Wave *w)
     static const char *SHAPE[4] = { "peel", "loop", "cross", "plunge" };
     printf("longest two dive groups flew together: %d ticks (%d = convoying)\n",
            w->max_convoy, CONVOY_TICKS);
+    printf("  of which above the approach, where there is no excuse: %d ticks\n",
+           w->max_convoy_high);
     if (w->max_convoy > 0) {
         printf("  worst was %s and %s at y %.0f (the fighter flies at %d)\n",
                SHAPE[w->convoy_shape[0] & 3], SHAPE[w->convoy_shape[1] & 3],
@@ -1593,6 +1801,13 @@ void wave_print_stats(const Wave *w)
     printf("parked enemies sat between %+.1f and %+.1f px from their slots\n",
            w->park_off_min, w->park_off_max);
     printf("closest two enemies sharing a path: %.1f px\n", w->min_lane_gap);
+    {
+        int   ws = -1;
+        float sideways = wave_dive_sideways(w, &ws);
+        printf("fastest an attack crosses the fighter's row sideways: %.1f px/tick "
+               "(%s), against the fighter's %.1f\n",
+               sideways, wave_dive_name(ws), (double)PLAYER_SPEED);
+    }
     {
         int   worst = -1;
         float low   = 0.0f;
@@ -1638,9 +1853,8 @@ void wave_print_stats(const Wave *w)
     printf("  bee        %4d  (%.1f%%)  over 20 slots\n",
            w->dives_bee, 100.0 * w->dives_bee / total);
     printf("attack curves in play: %d of %d\n", w->dive_shapes, DIVE_SHAPES);
-    static const char *SHAPE_NAME[DIVE_SHAPES] = { "peel", "loop", "cross", "plunge" };
     for (int i = 0; i < DIVE_SHAPES; ++i) {
-        printf("  %-8s %4d  (%.1f%%)\n", SHAPE_NAME[i], w->dives_by_shape[i],
+        printf("  %-8s %4d  (%.1f%%)\n", wave_dive_name(i), w->dives_by_shape[i],
                100.0 * w->dives_by_shape[i] / total);
     }
 }
@@ -1695,10 +1909,12 @@ static void track_convoys(Wave *w)
 {
     float best[MAX_DIVERS][MAX_DIVERS];
     float at_y[MAX_DIVERS][MAX_DIVERS];
+    int   high[MAX_DIVERS][MAX_DIVERS];
     for (int a = 0; a < MAX_DIVERS; ++a) {
         for (int b = 0; b < MAX_DIVERS; ++b) {
             best[a][b] = 1e9f;
             at_y[a][b] = 0.0f;
+            high[a][b] = 0;
         }
     }
 
@@ -1720,6 +1936,15 @@ static void track_convoys(Wave *w)
             if (d < best[a][b]) {
                 best[a][b] = d;
                 at_y[a][b] = (ea->pos.y + eb->pos.y) * 0.5f;
+                /* Two attacks converging on the approach is not the same fault
+                   as two attacks flying the length of the screen as one. The
+                   approach is a corridor by construction now - every curve
+                   lines up on the fighter's column and comes down it at a
+                   bounded angle, which is the whole fairness rule - so some
+                   crowding down there is the price of that rule and not
+                   something to tune away. Above it there is no such excuse, and
+                   that is the number to hold. */
+                high[a][b] = (ea->pos.y < AIM_Y_MIN && eb->pos.y < AIM_Y_MIN);
             }
         }
     }
@@ -1727,6 +1952,9 @@ static void track_convoys(Wave *w)
     for (int a = 0; a < MAX_DIVERS; ++a) {
         for (int b = a + 1; b < MAX_DIVERS; ++b) {
             if (best[a][b] < CONVOY_DIST) {
+                if (high[a][b] && w->convoy_run[a][b] + 1 > w->max_convoy_high) {
+                    w->max_convoy_high = w->convoy_run[a][b] + 1;
+                }
                 if (++w->convoy_run[a][b] > w->max_convoy) {
                     w->max_convoy      = w->convoy_run[a][b];
                     w->convoy_y        = at_y[a][b];
@@ -1987,18 +2215,90 @@ void wave_draw(Gfx *g, const Wave *w)
     }
 }
 
-void wave_dump_dives(void)
+const char *wave_dive_name(int shape)
 {
     static const char *NAME[DIVE_SHAPES] = { "peel", "loop", "cross", "plunge" };
-    Vec2 from = { 104.0f, 60.0f };      /* a boss slot, near the middle */
+    return (shape >= 0 && shape < DIVE_SHAPES) ? NAME[shape] : "?";
+}
+
+float wave_dive_sideways(const Wave *w, int *worst_shape)
+{
+    /* The corners of the problem rather than every case: the top and bottom
+       rows of the formation, its two edges and its middle, the fighter against
+       either wall and in the centre, and both break directions. A curve that
+       behaves at all of those behaves. */
+    static const float FROM_Y[]   = { (float)FORM_Y,
+                                      (float)(FORM_Y + (FORM_ROWS - 1) * FORM_PITCH) };
+    static const float FROM_X[]   = { (float)FORM_X, GAME_W * 0.5f,
+                                      (float)(GAME_W - FORM_X) };
+    static const float PLAYER_X[] = { 16.0f, GAME_W * 0.5f, (float)(GAME_W - 16) };
+    static const float AIM_OFF[]  = { -(float)AIM_SPREAD, 0.0f, (float)AIM_SPREAD };
+
+    float worst = 0.0f;
+    int   which = -1;
+
+    (void)w;
+    for (int shape = 0; shape < DIVE_SHAPES; ++shape) {
+    for (int a = 0; a < ARRAY_COUNT(FROM_Y); ++a) {
+    for (int b = 0; b < ARRAY_COUNT(FROM_X); ++b) {
+    for (int c = 0; c < ARRAY_COUNT(PLAYER_X); ++c) {
+    for (int d = 0; d < ARRAY_COUNT(AIM_OFF); ++d) {
+    for (int e = 0; e < 2; ++e) {
+    for (int side = -1; side <= 1; side += 2) {
+        static Path p;
+        /* The full tilt at both ends of the altitude range: the tilt is the
+           worst case for the bound, the altitudes for where it lands. */
+        Aim  aim  = { AIM_OFF[d], 1.0f,
+                      AIM_Y_MIN + (float)((e % 2) * AIM_Y_VARY) };
+        Vec2 from = { FROM_X[b], FROM_Y[a] };
+        build_dive_path(&p, from, side, PLAYER_X[c], shape, aim);
+
+        for (int i = 1; i < p.n; ++i) {
+            if (fabsf(p.pt[i].y - (float)PLAYER_Y) > FIGHTER_BAND) continue;
+
+            /* Samples are evenly spaced by arc length, so the sideways share
+               of a step is the sideways share of the speed. Measured at the
+               hardest stage's dive speed, which is the case that has to hold. */
+            float dx   = p.pt[i].x - p.pt[i - 1].x;
+            float dy   = p.pt[i].y - p.pt[i - 1].y;
+            float step = sqrtf(dx * dx + dy * dy);
+            if (step < 1e-6f) continue;
+
+            float sideways = fabsf(dx) / step * DIVE_SPEED_END;
+            if (sideways > worst) { worst = sideways; which = shape; }
+        }
+    }}}}}}}
+
+    if (worst_shape) *worst_shape = which;
+    return worst;
+}
+
+void wave_dump_dives(void)
+{
+    /* Every knob that changes the shape, so the picture shows the family rather
+       than one member of it: three slots across and down the formation, both
+       break directions, and the two ends of the altitude the approach commits
+       at. Reading control points has now twice failed to catch a curve that
+       doubled back; plotting the sampled polyline caught both in seconds. */
+    static const Vec2  FROM[]  = { { 56.0f, 44.0f }, { 104.0f, 76.0f },
+                                   { 168.0f, 108.0f } };
+    static const float AIM_Y[] = { AIM_Y_MIN, AIM_Y_MIN + AIM_Y_VARY };
     float player_x = 112.0f;
 
     for (int shape = 0; shape < DIVE_SHAPES; ++shape) {
-        static Path p;
-        build_dive_path(&p, from, 1, player_x, shape);
-        printf("SHAPE %d %s n=%d len=%.1f\n", shape, NAME[shape], p.n, p.length);
-        for (int i = 0; i < p.n; ++i) {
-            printf("PT %d %d %.2f %.2f\n", shape, i, p.pt[i].x, p.pt[i].y);
+        for (int f = 0; f < ARRAY_COUNT(FROM); ++f) {
+            for (int side = -1; side <= 1; side += 2) {
+                for (int a = 0; a < ARRAY_COUNT(AIM_Y); ++a) {
+                    static Path p;
+                    Aim aim = { 0.0f, 1.0f, AIM_Y[a] };
+                    build_dive_path(&p, FROM[f], side, player_x, shape, aim);
+                    printf("SHAPE %d %s from %.0f,%.0f side %d aimy %.0f n=%d len=%.1f\n",
+                           shape, wave_dive_name(shape), FROM[f].x, FROM[f].y,
+                           side, AIM_Y[a], p.n, p.length);
+                    for (int i = 0; i < p.n; ++i)
+                        printf("PT %.2f %.2f\n", p.pt[i].x, p.pt[i].y);
+                }
+            }
         }
     }
 }
