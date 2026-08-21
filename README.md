@@ -831,6 +831,16 @@ Catching one pays 100; catching all forty pays a further 10,000, deliberately
 worth far more than the sum of the hits so the round is something to be good at
 rather than a free forty shots.
 
+Every round then gets a flat 25 percent off the top. They were authored too
+fast to read, and a bonus stage is meant to reward knowing the pattern - there
+was not enough time on screen to learn one. The trim is a separate constant
+from the per-round speeds so that table still says how the rounds differ from
+each other rather than what the whole lot was last tuned to. It barely changes
+how long a round lasts, because the length is set by the launch schedule rather
+than by flight speed: eight groups going in on a fixed cadence, and only the
+last one's flight extends the tail. Measured across the five rounds, 25 percent
+slower flyers made them 7.6 percent longer.
+
 Four rounds cycle, and they differ in pattern rather than only in colour. There
 are four passes to draw on — the original S-shaped descent and the climb out
 through the top, plus a lateral crossing that serpentines straight across the
@@ -881,5 +891,26 @@ to *behaves like Galaga*.
 
 ## Next
 
-Separate effect and music volumes, which the Options screen has room for and
-reports nothing about yet. That is the list.
+**Settings.** Three things want doing together, because they share the same
+missing piece - somewhere to keep a preference. The high score already proves
+out where that goes (`SDL_GetPrefPath`), so this is mostly plumbing:
+
+- Effect and music volumes, which the Options screen has room for and reports
+  nothing about yet. `Mix_Volume` and `Mix_VolumeMusic` are already the single
+  points they would drive.
+- Borderless fullscreen. `SDL_RenderSetLogicalSize` already scales the 224x288
+  picture to any window, so `SDL_WINDOW_FULLSCREEN_DESKTOP` needs no resolution
+  list and no mode switch - a toggle and a remembered flag is the whole feature.
+  Exclusive fullscreen would buy nothing here and costs alt-tab behaviour.
+- A pause. Escape currently goes to the menu, which abandons the run; an arcade
+  cabinet had no pause but a game on a desktop wants one.
+
+**Then, in rough order of how much they would add:** an attract mode, since the
+title screen is currently a static menu where the arcade played a demo; initials
+against a high score rather than a bare number; and varying the formation entry
+flights per stage, which are the same five every time where the arcade shuffles
+them.
+
+Two sounds are still boomier than they want to be and were left alone because
+only the explosions were reported: `bosshit_*` at 0.87 and 0.99 of their energy
+below 320 Hz, and `die_*` at 0.96 and 0.97.

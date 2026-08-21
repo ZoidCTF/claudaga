@@ -224,6 +224,13 @@ static const Flight FLIGHTS[FLIGHT_COUNT] = {
    the pattern readable while giving less time to read it. */
 #define CHAL_SPEED_RAMP 0.30f
 
+/* A flat trim on every bonus round. They were authored too fast to read - a
+   bonus stage is meant to reward knowing the pattern, and there was not enough
+   time on screen to learn one. Kept separate from the per-round speeds below
+   so that table still says how the rounds differ from one another rather than
+   what the whole lot was last tuned to. */
+#define CHAL_SPEED_TRIM 0.75f
+
 /* How far the parked block drifts either side of its slots. Unlike everything
    above this does not ramp: the outer columns sit 40px from the screen edge
    and a 16px sprite needs 8 of that, so the amplitude is bounded by the screen
@@ -636,7 +643,8 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
     float t = (float)(stage - 1) / (float)RAMP_STAGES;
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
-    float speed = ENTRY_SPEED * round->speed * (1.0f + CHAL_SPEED_RAMP * t);
+    float speed = ENTRY_SPEED * round->speed * CHAL_SPEED_TRIM
+                * (1.0f + CHAL_SPEED_RAMP * t);
 
     /* The round's two passes and both their mirrors, so the screen is crossed
        from four directions rather than two. */
