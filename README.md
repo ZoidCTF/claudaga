@@ -62,7 +62,14 @@ tools\package.bat 1.0
 
 Wipes `build/`, makes a release from scratch, and writes `dist/claudaga-1.0.zip`
 — around 2.5 MB holding the executable, the two SDL DLLs, `assets/`, and a short
-README for whoever opens it. No installer and nothing to have installed.
+README for whoever opens it. The ZIP does not require installation.
+
+The GitHub Actions workflows build the Windows x64 application on every change.
+A tag such as `v1.0.0` also builds an Inno Setup installer and publishes both
+`claudaga-1.0.0.zip` and `claudaga-1.0.0-setup.exe` in a GitHub release. Run the
+`Windows release` workflow manually to test both packages without publishing a
+release. The project does not sign these files, so Windows can identify them as
+files from an unknown publisher.
 
 ## Controls
 
@@ -97,7 +104,7 @@ src/
   main.c        the loop, the views, and the two-player session
 assets/audio/   sound and music, all CC0
 third_party/    SDL2 and SDL2_mixer - fetched, not committed
-tools/          fetch_deps.bat, package.bat
+tools/          dependency, package, and installer definitions
 ```
 
 The picture is 224x288 — the arcade's raster turned upright for a vertical

@@ -1,0 +1,65 @@
+name: Windows build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+# The build only needs permission to read the checked-out source.
+permissions:
+  contents: read
+
+# Cancel an obsolete branch build when a newer commit starts another build.
+concurrency:
+  group: windows-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Release binary (x64)
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v6
+
+      # The batch file downloads the pinned SDL development archives.
+      - name: Fetch dependencies
+        shell: cmd
+        run: call tools\fetch_deps.bat
+
+      # The batch file locates MSVC and stages all runtime files in build\.
+      - name: Build the release binary
+        shell: cmd
+        run: call build.bat release
+
+      - name: Verify the staged application
+        shell: pwsh
+        run: |
+          $requiredFiles = @(
+            'build\claudaga.exe'
+            'build\SDL2.dll'
+            'build\SDL2_mixer.dll'
+            'build\assets\audio\CREDITS.txt'
+          )
+
+          foreach ($path in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "The release build did not create '$path'."
+            }
+          }
+
+      - name: Upload the release binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: claudaga-windows-x64
+          path: |
+            build/claudaga.exe
+            build/SDL2.dll
+            build/SDL2_mixer.dll
+            build/assets/
+          if-no-files-found: error
+
