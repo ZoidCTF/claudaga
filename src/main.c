@@ -34,6 +34,20 @@ static const SDL_Color DIM    = { 144, 144, 160, 255 };
 static const SDL_Color PALE   = { 230, 230, 240, 255 };
 
 /* The title is where the game opens; the tools sit behind play on Tab. */
+/* The shape browser, the pose check and the debug keys are for building the
+   game rather than playing it, so a release build does not carry the ways in.
+   The views themselves still compile - the command-line flags that render them
+   are how the artwork gets checked, and those cost nothing to leave - but Tab,
+   F2, F3 and R do nothing, and the title screen stops advertising them.
+
+   /DNDEBUG is what build.bat passes for a release; a debug build gets the
+   lot. */
+#ifdef NDEBUG
+#define TOOLS 0
+#else
+#define TOOLS 1
+#endif
+
 /* VIEW_DEMO sits outside the Tab rotation: it is somewhere the game puts
    itself, not somewhere a person navigates to. */
 typedef enum { VIEW_TITLE, VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_COUNT,
@@ -453,7 +467,7 @@ static void title_draw(Gfx *g, int menu_sel, int tick)
         const char *hint = "ARROWS SELECT   ENTER CONFIRM";
         font_draw(g, (GAME_W - font_width(hint)) / 2, GAME_H - 24, CYAN, hint);
     }
-    font_draw(g, 4, GAME_H - 9, DIM, "TAB TOOLS");
+    if (TOOLS) font_draw(g, 4, GAME_H - 9, DIM, "TAB TOOLS");
 }
 
 /* The rows of the options page, in the order they are drawn. */
@@ -825,7 +839,7 @@ static void ui_start_demo(Ui *u, Game *game)
  * way round. */
 static void ui_next_view(Ui *u)
 {
-    if (u->options) return;
+    if (!TOOLS || u->options) return;
 
     switch (u->view) {
     case VIEW_SHAPES: u->view = VIEW_POSE;    break;
@@ -1084,15 +1098,21 @@ int main(int argc, char **argv)
                     break;
 
                 case SDLK_r:
-                    if (ui.view == VIEW_PLAY) session_begin(&session, session.seats);
+                    if (TOOLS && ui.view == VIEW_PLAY) {
+                        session_begin(&session, session.seats);
+                    }
                     break;
                 case SDLK_F2:
-                    games[session.turn].wave.show_paths =
-                        !games[session.turn].wave.show_paths;
+                    if (TOOLS) {
+                        games[session.turn].wave.show_paths =
+                            !games[session.turn].wave.show_paths;
+                    }
                     break;
                 case SDLK_F3:
-                    games[session.turn].wave.attacks_enabled =
-                        !games[session.turn].wave.attacks_enabled;
+                    if (TOOLS) {
+                        games[session.turn].wave.attacks_enabled =
+                            !games[session.turn].wave.attacks_enabled;
+                    }
                     break;
                 default: break;
                 }

@@ -1,6 +1,7 @@
 build/
 third_party/SDL2/
 third_party/SDL2_mixer/
+dist/
 *.bmp
 
 # Something on the NAS share keeps regenerating these beside edited files.

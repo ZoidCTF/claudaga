@@ -39,6 +39,22 @@ environment, compiles everything in `src/`, and copies both DLLs and the
 `assets/` folder next to the executable. Pass `release` for an optimised, windowed build; the default is a
 debug build on the console subsystem so `printf` and asserts are visible.
 
+To hand the game to somebody:
+
+```bash
+tools\package.bat 1.0
+```
+
+That wipes `build/`, makes a release from scratch so nothing from a debug build
+can ride along, and writes `dist/claudaga-1.0.zip` - about 2.5 MB. In it: the
+executable, the two SDL runtime DLLs, the `assets` folder, and a README with the
+controls and where the settings live. No installer and nothing to have
+installed; unzip it anywhere and run it. The `.pdb` is deliberately left behind -
+worth keeping for a crash report, four megabytes of no use to a player.
+
+It carries an exclude list, which it earned: the first archive it built shipped
+a `Working Copy of CREDITS.txt` that a sync client had dropped into `assets`.
+
 Compiler output is teed to `build/build.log` and the final line reports a
 warning count — `[build] OK with 2 warning(s)` rather than a bare `OK`. The
 build is `/W4` and currently warning-free; the count exists because warnings
@@ -73,6 +89,12 @@ not restart itself — it reports that it is finished and lets whatever is drivi
 it decide, which is how the menu gets a look in. A headless run has nobody to
 show a menu to, so `--at` starts a fresh game instead; both go through the same
 function, so the two cannot drift apart.
+
+**A release build has no way in to any of this.** The shape browser, the pose
+check, and the F2, F3 and R keys are for building the game rather than playing
+it, so `/DNDEBUG` compiles the doors shut and the title screen stops advertising
+TAB TOOLS. The views themselves still build - the command-line flags that render
+them are how the artwork gets checked, and those cost nothing to leave in.
 
 Tab visits the tools and comes back where it started - shape browser, pose
 check, and then whichever of the title or the game it was called from. It used
