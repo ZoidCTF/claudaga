@@ -895,6 +895,20 @@ void game_show_results(Game *g)
 
 bool game_turn_settled(const Game *g)
 {
+    /* The GAME OVER message counts as part of settling.
+   
+       Losing the last fighter raises turn_over at once, but `over` - the crew
+       is gone and the message has been shown - only arrives 240 ticks later.
+       Settling usually finished inside that window, so the board flew away and
+       the controls passed to the other player while this game was still
+       counting, and its results waited until it was handed back: the formation
+       would fly in under a GAME OVER message and only then show the numbers.
+
+       Waiting for the message here means an ending game is always `over` by
+       the time its board has left, which is what puts the results in the right
+       place. */
+    if (g->game_over > 0) return false;
+
     return !fx_player_blast_active(&g->fx) && wave_settled(&g->wave);
 }
 

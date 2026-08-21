@@ -854,6 +854,21 @@ order is the one the arcade uses and the one it should always have been - the
 divers come home, the formation leaves, the numbers land on an empty sky, and
 then the other player begins.
 
+That still was not enough, because of a race between two flags. Losing the last
+fighter raises `turn_over` *at once*, but `over` only arrives 240 ticks later,
+when the GAME OVER message has finished. Settling usually completed inside that
+window - so the board flew away and the controls passed on while the game was
+still counting, and the results waited until that seat was handed back: the
+formation would fly in underneath a GAME OVER message, and only then would the
+numbers appear. Precisely what was reported, and precisely the thing the
+previous fix was supposed to have solved.
+
+The message is part of settling now. `game_turn_settled` is false while
+`game_over` is counting, so an ending game is always `over` by the time its
+board has left, and there is no window in which the two flags disagree. It
+shows in the timings: an ordinary lost fighter settles in 204 ticks, and a last
+one in exactly 240 - the message, waited out.
+
 ### Two ways settling failed to end
 
 Settling is the game waiting on itself, which is the one shape of wait that can

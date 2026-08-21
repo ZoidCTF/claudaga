@@ -60,9 +60,10 @@ typedef enum { MENU_ONE, MENU_TWO, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuIte
 
 /* The longest the game will wait for a board to go quiet before packing it
    away anyway. Ten seconds is far past anything a real settle takes - the
-   measured range is 42 to 229 ticks - so reaching it means something is
-   stuck, and going on is better than stopping. */
-#define SETTLE_LIMIT 600
+   measured range is 42 to 229 ticks, plus the 240 of a GAME OVER message when
+   there is one - so reaching it means something is stuck, and going on is
+   better than stopping. */
+#define SETTLE_LIMIT 900
 
 /* Changing hands is a sequence, not an instant.
  *
@@ -260,7 +261,16 @@ static void session_tick(Session *s, const Input *in, bool to_title,
         game_update(cur, in);
         if (cur->finished) {
             int next = seat_next(s);
-            if (next < 0) { s->phase = TURN_PLAYING; break; }
+            if (next < 0) {
+                /* Everybody is out. Ended here rather than by falling through
+                   to the play code, which would have run another update and
+                   read this seat's `over` flag a second time - logging a
+                   hand-over that was not happening. */
+                if (to_title) { *view = VIEW_TITLE; *menu_sel = MENU_ONE; }
+                else          session_begin(s, s->seats);
+                s->phase = TURN_PLAYING;
+                return;
+            }
             session_hand_to(s, next);
         }
         return;
