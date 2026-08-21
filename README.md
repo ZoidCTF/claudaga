@@ -467,6 +467,27 @@ the rest of the way. Steering during any of it would let the player pull away
 from the very thing flying down to meet them, which is why the controls are held
 rather than merely ignored.
 
+**And the stage does not turn over until they have docked.** A captor is very
+often the last enemy on the board - it is a boss, and bosses are what a player
+saves for last - so the stage clears at the very moment the reunion begins. The
+120-tick pause then ran concurrently with a reunion that can take twice that,
+and the next wave arrived on top of a fighter still flying to its dock. The
+pause holds while a rescue is in the air; measured, the gap from clear to start
+goes from 120 ticks to 224 when one is.
+
+### A capture is finished even when the game is not
+
+Losing the last fighter to a beam does not stop the beam. The arcade hoists it
+up to the boss while GAME OVER sits on screen, and the boss carries it home; the
+game ends around it rather than freezing it in place.
+
+Both of these were the same shape of bug, which is worth naming: an animation
+whose update sat below an early return. The game-over branch returned before the
+capture lift, and the stage-clear branch returned before the rescue, so each ran
+only while nothing else was happening - and each is at its most likely exactly
+when something else is. The three animations are functions now, called from
+every state that should still be running them.
+
 A dual fighter is two hulls, not one wide one: both are real targets, both
 shoot, and it is allowed twice as many shots in the air, which is most of what
 makes the rescue worth attempting. A hit takes the rescued hull rather than a
