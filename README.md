@@ -830,13 +830,29 @@ So it is four phases now:
 
 | phase | what happens |
 |---|---|
-| settling | the explosion plays and whatever is flying gets home; nothing new launches |
+| settling | the explosion plays and every diver gets *back into formation*; nothing new launches |
 | leaving | the outgoing formation lifts off the top of the screen, keeping its shape |
+| results | if that player is out, their numbers, on the sky their board just left |
 | announcing | PLAYER 1 or PLAYER 2, over an empty sky |
 | arriving | the incoming formation flies down into place |
 
 **Control returns only at the end.** A board still arriving is not a board
 anybody can be asked to fight.
+
+### The results belong to the sequence, not to the game
+
+A player whose crew is gone used to start their own results screen the moment
+the GAME OVER message ended, which put it in the wrong place twice over: over a
+formation still standing there, and - because the session only counts a seat
+finished once its results are done - in the middle of the *other* player's turn.
+One player would be out, the other would play, and the first player's numbers
+would appear.
+
+So the game stops at `over`: crew gone, message shown, waiting. The session
+settles the board, flies it away, and only then calls `game_show_results`. The
+order is the one the arcade uses and the one it should always have been - the
+divers come home, the formation leaves, the numbers land on an empty sky, and
+then the other player begins.
 
 ### Two ways settling failed to end
 
@@ -878,6 +894,22 @@ as a block, and whatever had not launched yet picks up its schedule once the
 block is home. That is why the settling phase waits on `wave_settled` - nothing
 in the air - rather than `wave_all_formed`, which a half-entered board would
 never satisfy.
+
+**A recalled diver is not the same as an enemy that has never launched.** The
+hold was applied to both, so divers sent home during a settle sat parked
+off-screen instead of rejoining, and turned up unannounced when that board came
+back - enemies from nowhere, in the middle of a formation flying in. A diver on
+its way home is a formation member caught out of place, so it carries a
+`returning` flag: the hold does not apply to it, and a board does not count as
+settled while one is still outstanding. That is what "all enemies are returned
+to their formation" actually requires.
+
+**Nothing dives until the formation is whole again.** The latch that holds
+attacks back until the wave has assembled is tripped once per wave, and a board
+handed back mid-stage had already tripped it - so attacks resumed the moment the
+player did, over a formation that was still arriving. It is re-armed on every
+hand-over. Measured: the first dive after each arrival reports the wave fully
+formed.
 
 **A held schedule has to wait along with the enemy.** The first version held the
 launches but let the wave's tick run on underneath them - about two hundred and

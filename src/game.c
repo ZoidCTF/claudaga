@@ -224,6 +224,7 @@ void game_restart(Game *g)
     g->finished    = false;
     g->turn_over   = false;
 
+    g->over           = false;
     g->next_life      = FIRST_EXTRA_LIFE;
     g->extra_msg      = 0;
     g->shots_fired    = 0;
@@ -673,10 +674,20 @@ void game_update(Game *g, const Input *in)
         if (g->player.captured) update_capture_lift(g);
 
         if (--g->game_over == 0) {
-            g->results       = RESULTS_TICKS;
-            g->results_armed = false;
+            g->over = true;
             if (!g->demo) highscore_save(g->high_score);
         }
+        return;
+    }
+
+    /* The crew is gone and the message has been and gone, but the results are
+       not this function's to start. The board still has to be settled and
+       flown away first, and only the session knows when that is done - so the
+       wave carries on turning over here and nothing else happens until
+       game_show_results is called. */
+    if (g->over && g->results == 0) {
+        wave_update(&g->wave, g->player.x);
+        if (g->player.captured) update_capture_lift(g);
         return;
     }
 
@@ -873,6 +884,13 @@ static void draw_results(Gfx *gfx, const Game *g)
         const char *best = "NEW HIGH SCORE";
         font_draw(gfx, (GAME_W - font_width(best)) / 2, y + 54, YELLOW, best);
     }
+}
+
+void game_show_results(Game *g)
+{
+    if (g->results > 0 || g->finished) return;
+    g->results       = RESULTS_TICKS;
+    g->results_armed = false;
 }
 
 bool game_turn_settled(const Game *g)

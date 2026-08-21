@@ -114,6 +114,14 @@ typedef struct {
        respawn cannot finish while it is set, so the board waits exactly where
        it was until this seat comes round again. */
     bool   turn_over;
+
+    /* The crew is gone and the message has been shown, but the results screen
+       has not run yet. Between the two the board still has to be put away, and
+       only whoever is running the session knows when that has happened - so
+       the game stops here and waits to be told. Getting this wrong showed as
+       one player's results appearing in the middle of the other player's
+       turn. */
+    bool   over;
     int    seat;          /* 0 or 1, for the banner and the HUD    */
     int    other_score;   /* the other seat's, or -1 when alone    */
 
@@ -152,6 +160,11 @@ void game_update(Game *g, const Input *in);
    A turn cannot be handed over before this: switching boards mid-explosion
    leaves the wreck to appear over the next player's screen. */
 bool game_turn_settled(const Game *g);
+
+/* Starts the results screen for a game whose crew is gone. Called once the
+   board has been packed away, so the numbers land on an empty sky rather than
+   over a formation that is still standing there. */
+void game_show_results(Game *g);
 void game_draw(Gfx *gfx, const Game *g);
 
 #endif /* CLAUDAGA_GAME_H */

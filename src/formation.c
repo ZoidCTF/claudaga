@@ -790,6 +790,7 @@ static void wave_reset_common(Wave *w)
         e->hits         = 0;
         e->beam_t       = 0;
         e->has_captive  = false;
+        e->returning    = false;
     }
 }
 
@@ -1269,6 +1270,7 @@ static void send_home(Wave *w, Enemy *e)
     e->launch_tick = depart;
     e->speed       = ENTRY_SPEED;
     e->state       = ENEMY_WAITING;
+    e->returning   = true;
 }
 
 void wave_recall(Wave *w)
@@ -1367,7 +1369,11 @@ void wave_update(Wave *w, float player_x)
                is a launch time already past, so every enemy still waiting went
                out on the single tick the hold lifted, stacked on top of one
                another. Carrying the times along keeps the gaps between them. */
-            if (w->entries_held) { ++e->launch_tick; break; }
+            /* A board packing itself away still lets its own divers home.
+                They are formation members caught out of place, and leaving
+                them parked off-screen means they turn up unannounced when the
+                board comes back - which is exactly what they did. */
+            if (w->entries_held && !e->returning) { ++e->launch_tick; break; }
 
             if (w->tick >= e->launch_tick) {
                 e->state   = ENEMY_ENTERING;
@@ -1424,9 +1430,10 @@ void wave_update(Wave *w, float player_x)
             e->pos.y += w->lift;
 
             if (e->join_t >= 1.0f) {
-                e->state   = ENEMY_FORMED;
-                e->pos     = slot_pos(w, e->slot);
-                e->heading = HEADING_N;
+                e->state     = ENEMY_FORMED;
+                e->pos       = slot_pos(w, e->slot);
+                e->heading   = HEADING_N;
+                e->returning = false;
             }
             break;
         }
@@ -1729,7 +1736,15 @@ void wave_print_unsettled(const Wave *w)
 bool wave_settled(const Wave *w)
 {
     for (int i = 0; i < MAX_ENEMIES; ++i) {
-        switch (w->enemies[i].state) {
+        const Enemy *e = &w->enemies[i];
+
+        /* Anything on its way home counts as unsettled even while it waits
+           its turn in the lane queue. Otherwise a board looks quiet with half
+           its divers still parked off the top, and they arrive later looking
+           like enemies from nowhere. */
+        if (e->returning && e->state != ENEMY_DEAD) return false;
+
+        switch (e->state) {
         case ENEMY_ENTERING:
         case ENEMY_TO_SLOT:
         case ENEMY_DIVING:
@@ -1740,6 +1755,11 @@ bool wave_settled(const Wave *w)
         }
     }
     return true;
+}
+
+void wave_rearm_attacks(Wave *w)
+{
+    w->next_attack = 0;
 }
 
 bool wave_all_formed(const Wave *w)

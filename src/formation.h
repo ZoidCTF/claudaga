@@ -75,6 +75,12 @@ typedef struct {
     Vec2       beam_from;    /* the slot it left    */
     Vec2       beam_pos;     /* where it hovers     */
     bool       has_captive;  /* carrying a taken fighter */
+
+    /* On its way back from a dive rather than arriving for the first time. A
+       board being packed away has to let these finish - they belong in the
+       formation and were only out because they were attacking - while enemies
+       that have never launched stay where they are. */
+    bool       returning;
 } Enemy;
 
 /* Authored paths. The left-hand ones are written out; each right-hand one is
@@ -271,6 +277,11 @@ bool wave_all_formed(const Wave *w);
    during its entry has enemies that have not launched yet, and waiting for
    those would wait forever. */
 bool wave_settled(const Wave *w);
+
+/* Re-arms the attack timer, so nothing dives until the formation is complete
+   again. The latch that does this normally is only tripped once per wave; a
+   board handed back mid-stage needs it tripped again. */
+void wave_rearm_attacks(Wave *w);
 
 /* Names what is still moving, for when a wait for quiet does not end. */
 void wave_print_unsettled(const Wave *w);

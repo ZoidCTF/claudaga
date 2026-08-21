@@ -79,6 +79,7 @@ typedef enum {
     TURN_PLAYING,
     TURN_SETTLING,   /* the explosion, and whatever is still flying */
     TURN_LEAVING,    /* the outgoing formation lifting away         */
+    TURN_RESULTS,    /* a finished player's numbers, over empty sky */
     TURN_ARRIVING    /* the incoming one coming down                */
 } TurnPhase;
 
@@ -158,6 +159,29 @@ static void session_begin(Session *s, int seats)
  * play_tick is: a turn taken two different ways is two turns that will
  * eventually disagree, and the one the harness drives is the one nobody
  * watches. */
+/* Passes the controls to `next`: announce it, and put its board off the top
+   of the screen so it has somewhere to fly down from. */
+static void session_hand_to(Session *s, int next)
+{
+    s->turn     = next;
+    s->handover = HANDOVER_TICKS;
+    audio_play(SFX_STAGE);
+
+    Game *g = &s->game[next];
+    g->wave.lift = FORM_AWAY;
+    wave_hold_entries(&g->wave, true);
+    wave_pause_attacks(&g->wave, true);
+
+    /* Nothing dives until the formation is whole again. The latch that holds
+       attacks back until then is tripped once per wave, and this board has
+       already tripped it - so it is re-armed, and the arriving formation gets
+       to finish arriving before anything comes out of it. */
+    wave_rearm_attacks(&g->wave);
+
+    s->phase = TURN_ARRIVING;
+    session_log(s, "gone - next board announced");
+}
+
 static void session_tick(Session *s, const Input *in, bool to_title,
                          View *view, int *menu_sel)
 {
@@ -216,15 +240,28 @@ static void session_tick(Session *s, const Input *in, bool to_title,
         wave_update(&cur->wave, cur->player.x);
 
         if (wave_lift(&cur->wave, FORM_AWAY)) {
-            s->turn     = s->incoming;
-            s->handover = HANDOVER_TICKS;
-            audio_play(SFX_STAGE);
-            /* The incoming board starts off the top of the screen so that it
-               has somewhere to fly down from. */
-            s->game[s->turn].wave.lift = FORM_AWAY;
-            wave_hold_entries(&s->game[s->turn].wave, true);
-            s->phase = TURN_ARRIVING;
-            session_log(s, "gone - next board announced");
+            /* A player whose crew is gone gets their numbers now, on the empty
+               sky their board has just left, and before anybody else plays.
+               Showing them later meant one player's results turning up in the
+               middle of the other player's turn. */
+            if (cur->over) {
+                game_show_results(cur);
+                s->phase = TURN_RESULTS;
+                session_log(s, "gone - results for this player");
+                return;
+            }
+            session_hand_to(s, s->incoming);
+        }
+        return;
+
+    case TURN_RESULTS:
+        /* game_update runs the results screen and sets `finished` at the end
+           of it; the board is already away, so nothing else is moving. */
+        game_update(cur, in);
+        if (cur->finished) {
+            int next = seat_next(s);
+            if (next < 0) { s->phase = TURN_PLAYING; break; }
+            session_hand_to(s, next);
         }
         return;
 
@@ -258,9 +295,12 @@ static void session_tick(Session *s, const Input *in, bool to_title,
 
     /* A turn ends when a fighter is lost. With one seat that means nothing and
        the flag is simply cleared. With two it starts the sequence above. */
-    if (cur->turn_over || cur->finished) {
-        int next = seat_next(s);
-        if (next < 0 || next == s->turn) {
+    if (cur->turn_over || cur->over) {
+        /* A player who is out still has their board packed away and their
+           numbers shown, so `over` starts the sequence even when there is
+           nobody to hand to afterwards. */
+        int next = cur->over ? s->turn : seat_next(s);
+        if (!cur->over && (next < 0 || next == s->turn)) {
             cur->turn_over = false;
         } else {
             s->incoming = next;
