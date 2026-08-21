@@ -796,6 +796,47 @@ as 16383 — half pressed, which fires, and correctly so. The test released the
 trigger to 0 and then reported the game as broken for doing the right thing
 with it.
 
+## Two players, taking turns
+
+The cabinet's arrangement: one fighter at a time, and a turn ends when you lose
+one. The menu offers 1 PLAYER or 2 PLAYERS, and `--players 2` starts one
+headless.
+
+**Each seat is a whole Game.** That is not extravagance - taking turns means
+player two's formation is *their* formation, at their own stage, with their own
+crew, waiting exactly as they left it. Sharing one game and swapping scores
+would be a different game entirely. Both exist whether or not two people are
+playing, because a second seat that is only sometimes allocated is a second code
+path for everything that touches one.
+
+Freezing a seat between turns needed no new machinery. Losing a fighter raises
+`turn_over`, and the respawn already refuses to complete while it is set, so the
+board simply stops where it is until that seat comes round again. The session
+lowers the flag when it hands the controls back.
+
+### Who decides the game is over
+
+One player finishing has to leave the other playing on, and that turned out to
+be about *where* the decision lived rather than what it was. `play_tick` used to
+own it: update the game, and if it reports itself finished, hand back to the
+menu. With two seats that fires on the first one to finish and takes the other
+down with it.
+
+So `session_tick` absorbed it. The seat knows it is finished; only the session
+knows whether that ends anything. It is still the one function both the
+interactive loop and the headless warm-up go through, for the reason `play_tick`
+was: a turn taken two different ways is two turns that will eventually disagree,
+and the one the harness drives is the one nobody watches.
+
+The HUD gives the right-hand slot to the other seat's score rather than the
+stage, which is spelled out in flags along the bottom anyway, and blinks the
+label of whoever is playing - which is how the arcade says whose turn it is
+without a word of explanation.
+
+One bug worth recording because of how it read: the debug flags were applied to
+seat one only, so a traced two-player run logged only half its own handovers.
+It looked exactly like the turns not alternating. They were.
+
 ## The attract screen
 
 Left alone on the title for ten seconds, the game starts playing itself, and
@@ -1080,8 +1121,8 @@ to confirm during play.
 
 ## Next
 
-**In rough order of how much they would add:** two-player alternating play, and
-initials against a high score rather than a bare number.
+Initials against a high score rather than a bare number, which is the last
+thing on the list.
 
 Two sounds are still boomier than they want to be and were left alone because
 only the explosions were reported: `bosshit_*` at 0.87 and 0.99 of their energy

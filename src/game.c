@@ -183,7 +183,8 @@ static void highscore_save(int v)
 void game_init(Game *g)
 {
     memset(g, 0, sizeof *g);
-    g->first_stage = 1;
+    g->first_stage  = 1;
+    g->other_score  = -1;
     wave_init(&g->wave);
     stars_init();
 
@@ -221,6 +222,7 @@ void game_restart(Game *g)
     g->bonus_hits  = 0;
     g->bonus_award = 0;
     g->finished    = false;
+    g->turn_over   = false;
 
     g->next_life      = FIRST_EXTRA_LIFE;
     g->extra_msg      = 0;
@@ -313,6 +315,7 @@ static void start_capture(Game *g, int boss)
     g->player.captured = true;
     g->player.alive    = false;
     g->gone_tick       = g->tick;
+    g->turn_over       = true;
     g->player.cap_pos  = player_pos(g);
     g->player.cap_spin = 0.0f;
     g->player.cap_boss = boss;
@@ -334,6 +337,7 @@ static void kill_player(Game *g)
     g->player.alive   = false;
     g->player.respawn = RESPAWN_TICKS;
     g->gone_tick      = g->tick;
+    g->turn_over      = true;
     fx_blast_player(&g->fx, player_pos(g));
     audio_play(SFX_PLAYER_DIE);
 
@@ -755,7 +759,8 @@ void game_update(Game *g, const Input *in)
         if (g->player.respawn > 0) --g->player.respawn;
 
         Vec2 spot = { GAME_W / 2.0f, (float)PLAYER_Y };
-        if (g->player.respawn == 0 && !fx_player_blast_active(&g->fx)
+        if (g->player.respawn == 0 && !g->turn_over
+            && !fx_player_blast_active(&g->fx)
             && wave_area_clear(&g->wave, spot, SPAWN_CLEAR_RADIUS)) {
             g->player.alive = true;
             g->player.x     = spot.x;
@@ -899,10 +904,22 @@ void game_draw(Gfx *gfx, const Game *g)
 
     fx_draw(gfx, &g->fx);
 
-    /* HUD: the player's score on the left, the best the machine has seen in
-       the middle, the stage on the right - the arcade's arrangement. */
+    /* HUD: this seat's score on the left, the machine's best in the middle,
+       and on the right either the stage or - with two playing - the other
+       seat's score. There is no room for both, and the stage is already
+       spelled out in flags along the bottom, so the score is the one that
+       earns the space.
+
+       The label of whichever seat is playing blinks, which is how the arcade
+       says whose turn it is without a word of explanation. */
     char buf[32];
-    font_draw(gfx, 4, 2, WHITE, "1UP");
+    bool two = (g->other_score >= 0);
+    bool lit = ((g->tick / 20) % 2) == 0;
+
+    const char *mine  = (g->seat == 0) ? "1UP" : "2UP";
+    const char *their = (g->seat == 0) ? "2UP" : "1UP";
+
+    font_draw(gfx, 4, 2, (two && !lit) ? DIM : WHITE, mine);
     snprintf(buf, sizeof buf, "%d", g->score);
     font_draw(gfx, 4, 10, YELLOW, buf);
 
@@ -913,12 +930,18 @@ void game_draw(Gfx *gfx, const Game *g)
         font_draw(gfx, (GAME_W - font_width(buf)) / 2, 10, YELLOW, buf);
     }
 
-    if (wave_is_challenge(&g->wave)) {
-        snprintf(buf, sizeof buf, "BONUS %d", g->stage);
+    if (two) {
+        font_draw(gfx, GAME_W - font_width(their) - 4, 2, DIM, their);
+        snprintf(buf, sizeof buf, "%d", g->other_score);
+        font_draw(gfx, GAME_W - font_width(buf) - 4, 10, DIM, buf);
     } else {
-        snprintf(buf, sizeof buf, "STAGE %d", g->stage);
+        if (wave_is_challenge(&g->wave)) {
+            snprintf(buf, sizeof buf, "BONUS %d", g->stage);
+        } else {
+            snprintf(buf, sizeof buf, "STAGE %d", g->stage);
+        }
+        font_draw(gfx, GAME_W - font_width(buf) - 4, 2, CYAN, buf);
     }
-    font_draw(gfx, GAME_W - font_width(buf) - 4, 2, CYAN, buf);
 
     /* A bonus round announces itself, and shows the running tally, since the
        whole round is about how many are caught. */

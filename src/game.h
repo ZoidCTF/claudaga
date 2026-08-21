@@ -104,6 +104,19 @@ typedef struct {
        sitting at beat the person who last played it. */
     bool   demo;
 
+    /* Two-player alternating play. Each seat is a whole Game of its own -
+       its own score, stage, crew and wave in progress - because that is what
+       taking turns means here: player two's formation is not player one's
+       formation with a different score on it.
+
+       `turn_over` is raised when a fighter is lost and lowered by whoever is
+       running the session, which is what freezes a game between turns: the
+       respawn cannot finish while it is set, so the board waits exactly where
+       it was until this seat comes round again. */
+    bool   turn_over;
+    int    seat;          /* 0 or 1, for the banner and the HUD    */
+    int    other_score;   /* the other seat's, or -1 when alone    */
+
     /* Debug aid: stops the fighter dying, so a long --at run reaches the tick
        it was asked for instead of restarting halfway. */
     bool   invulnerable;

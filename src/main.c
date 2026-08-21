@@ -41,7 +41,132 @@ typedef enum { VIEW_TITLE, VIEW_PLAY, VIEW_SHAPES, VIEW_POSE, VIEW_COUNT,
 
 /* Options has nothing in it yet, so it is reachable from the title rather than
    sitting in the Tab rotation. */
-typedef enum { MENU_START, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuItem;
+typedef enum { MENU_ONE, MENU_TWO, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuItem;
+
+/* --------------------------------------------------------------- seats */
+
+/* Two-player alternating play, the way the cabinet did it: one fighter at a
+   time, and a turn ends when you lose one.
+ *
+ * Each seat is a whole Game. That is not extravagance - taking turns means
+ * player two's formation is their own formation, at their own stage, with
+ * their own crew, waiting exactly as they left it. Sharing one Game and
+ * swapping scores would be a different game entirely.
+ *
+ * A seat that is out of fighters, or has finished, is skipped; when both are
+ * done the session is over. */
+#define SEATS 2
+#define HANDOVER_TICKS 110
+
+typedef struct {
+    Game *game;        /* points at the two Game objects main owns */
+    int   seats;       /* 1 or 2 */
+    int   turn;        /* whose it is */
+    int   handover;    /* ticks left on the PLAYER N banner */
+} Session;
+
+static bool seat_done(const Game *g)
+{
+    return g->finished;
+}
+
+/* The next seat with anything left to do, or -1 when the session is over. */
+static int seat_next(const Session *s)
+{
+    for (int i = 1; i <= s->seats; ++i) {
+        int k = (s->turn + i) % s->seats;
+        if (!seat_done(&s->game[k])) return k;
+    }
+    return seat_done(&s->game[s->turn]) ? -1 : s->turn;
+}
+
+/* Each seat needs to know the other's score for the HUD, and its own number
+   for the banner. Refreshed every frame rather than pushed on change, since
+   there is one place that draws and it is cheaper to be right than clever. */
+static void session_sync(Session *s)
+{
+    for (int i = 0; i < SEATS; ++i) {
+        s->game[i].seat = i;
+        s->game[i].other_score =
+            (s->seats > 1) ? s->game[i ^ 1].score : -1;
+    }
+}
+
+static void session_begin(Session *s, int seats)
+{
+    s->seats    = seats;
+    s->turn     = 0;
+    s->handover = 0;
+    for (int i = 0; i < SEATS; ++i) {
+        s->game[i].demo = false;
+        game_restart(&s->game[i]);
+        /* The seat that is not playing yet is finished as far as the session
+           is concerned, so a one-player game never waits on it. */
+        if (i >= seats) s->game[i].finished = true;
+    }
+    session_sync(s);
+}
+
+/* One tick of a session: the turn that is running, the banner between turns,
+   and noticing when everybody is out.
+ *
+ * Shared by the interactive loop and the headless warm-up for the same reason
+ * play_tick is: a turn taken two different ways is two turns that will
+ * eventually disagree, and the one the harness drives is the one nobody
+ * watches. */
+static void session_tick(Session *s, const Input *in, bool to_title,
+                         View *view, int *menu_sel)
+{
+    Game *cur = &s->game[s->turn];
+    session_sync(s);
+
+    if (s->handover > 0) {
+        /* Nothing steps under the banner: the outgoing seat has already lost
+           its fighter and the incoming one has not been handed the controls
+           yet. */
+        if (--s->handover == 0) {
+            cur = &s->game[s->turn];
+            cur->turn_over = false;
+        }
+        return;
+    }
+
+    game_update(cur, in);
+
+    /* A turn ends when a fighter is lost. With one seat that means nothing and
+       the flag is simply cleared; with two, the board freezes exactly where it
+       is - the respawn cannot complete while turn_over is set - and waits for
+       this seat to come round again. */
+    if (cur->turn_over || cur->finished) {
+        int next = seat_next(s);
+        if (next < 0 || next == s->turn) {
+            cur->turn_over = false;
+        } else {
+            s->turn     = next;
+            s->handover = HANDOVER_TICKS;
+            audio_play(SFX_STAGE);
+            if (cur->trace) {
+                printf("tick %d: seat %d hands over to seat %d "
+                       "(scores %d and %d)\n",
+                       cur->tick, (cur->seat) + 1, next + 1,
+                       s->game[0].score, s->game[1].score);
+            }
+        }
+    }
+
+    /* The session is over only when *every* seat is - one player finishing
+       leaves the other playing on alone, which is most of the point of taking
+       turns. Deciding that here rather than inside the per-seat update is what
+       makes that possible: the seat knows it is finished, the session knows
+       whether that matters.
+
+       A headless fast-forward starts a fresh session rather than stopping on
+       the menu, since there is nobody to show a menu to. */
+    if (seat_next(s) < 0) {
+        if (to_title) { *view = VIEW_TITLE; *menu_sel = MENU_ONE; }
+        else          session_begin(s, s->seats);
+    }
+}
 
 /* ---------------------------------------------------------------- demo */
 
@@ -135,9 +260,10 @@ static void title_draw(Gfx *g, int menu_sel, int tick)
         shape_draw(g, CAST[i], p, HEADING_N, 1.5f);
     }
 
-    static const char *ITEMS[MENU_COUNT] = { "START", "OPTIONS", "QUIT" };
+    static const char *ITEMS[MENU_COUNT] = { "1 PLAYER", "2 PLAYERS",
+                                             "OPTIONS", "QUIT" };
     for (int i = 0; i < MENU_COUNT; ++i) {
-        float y = 164.0f + i * 22.0f;
+        float y = 156.0f + i * 19.0f;
         bool  on = (i == menu_sel);
         int   x  = (GAME_W - font_width(ITEMS[i])) / 2;
         font_draw(g, x, (int)y, on ? YELLOW : DIM, ITEMS[i]);
@@ -339,26 +465,6 @@ static void pose_draw(Gfx *g, int subject)
 
 /* ------------------------------------------------------------------- main */
 
-/* One simulation tick of the play view, including what happens when the game
-   reports itself finished. Shared so the interactive loop and the headless
-   fast-forward cannot drift apart: `to_title` hands control back to the menu,
-   which is what a person should see, while a headless run has nobody to show a
-   menu to and simply starts again. */
-static void play_tick(Game *game, const Input *in, bool to_title,
-                      View *view, int *menu_sel)
-{
-    game_update(game, in);
-    if (!game->finished) return;
-
-    if (to_title) {
-        game->finished = false;
-        *menu_sel      = MENU_START;
-        *view          = VIEW_TITLE;
-    } else {
-        game_restart(game);
-    }
-}
-
 static void usage(void)
 {
     fprintf(stderr,
@@ -368,6 +474,7 @@ static void usage(void)
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "                [--stage N] [--mute] [--padtest] [--options]\n"
             "                [--audiotest [DIR]] [--paused] [--divedump] [--demo]\n"
+            "                [--players 1|2]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -398,6 +505,7 @@ typedef struct {
        setting is added. */
     Settings *set;
     Gfx      *gfx;
+    Session  *sess;
 } Ui;
 
 /* Everything a changed setting has to touch. Called from one place so that a
@@ -466,7 +574,7 @@ static void ui_toggle_pause(Ui *u)
     audio_pause(u->paused);
 }
 
-static void ui_confirm(Ui *u, Game *game)
+static void ui_confirm(Ui *u)
 {
     /* On the options page the confirm button flips whatever is selected,
        which is what a player expects of a row that reads ON or OFF. */
@@ -476,8 +584,8 @@ static void ui_confirm(Ui *u, Game *game)
     }
     if (u->view != VIEW_TITLE) return;
 
-    if (u->menu_sel == MENU_START) {
-        game_restart(game);
+    if (u->menu_sel == MENU_ONE || u->menu_sel == MENU_TWO) {
+        session_begin(u->sess, u->menu_sel == MENU_ONE ? 1 : 2);
         u->view = VIEW_PLAY;
         audio_music_stop();
     } else if (u->menu_sel == MENU_OPTIONS) {
@@ -539,7 +647,7 @@ static void ui_next_view(Ui *u)
 int main(int argc, char **argv)
 {
     const char *shot_path = NULL;
-    Ui          ui        = { VIEW_TITLE, MENU_START, false, true, 0,
+    Ui          ui        = { VIEW_TITLE, MENU_ONE, false, true, 0,
                               OPT_SFX, false, 0, 0, NULL, NULL };
     Settings    settings;
     bool        view_set  = false;
@@ -555,6 +663,7 @@ int main(int argc, char **argv)
     bool        show_options = false;
     bool        show_paused  = false;
     bool        show_demo    = false;
+    int         seats        = 1;
     const char *audiodir  = NULL;
     bool        audioreport = false;
     bool        autofire  = false;
@@ -585,6 +694,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--options")) { show_options = true; view_set = true; }
         else if (!strcmp(argv[i], "--paused"))  { show_paused  = true; view_set = true; }
         else if (!strcmp(argv[i], "--demo"))    { show_demo    = true; view_set = true; }
+        else if (!strcmp(argv[i], "--players") && i + 1 < argc) seats = atoi(argv[++i]);
         else { usage(); return 1; }
     }
     if (scale < 1) scale = 1;
@@ -652,33 +762,53 @@ int main(int argc, char **argv)
        that fast-forwards and then hands over wants one working when it does. */
     input_open();
 
-    static Game game;   /* several hundred KB of baked paths; not stack-sized */
-    game_init(&game);
+    /* Several hundred KB of baked paths each; not stack-sized. Both exist
+       whether or not two people are playing - a second seat that is only
+       sometimes allocated is a second code path for everything that touches
+       one. */
+    static Game games[SEATS];
+    for (int i = 0; i < SEATS; ++i) game_init(&games[i]);
+
+    if (seats < 1) seats = 1;
+    if (seats > SEATS) seats = SEATS;
+
+    Session session = { games, 1, 0, 0 };
+    ui.sess = &session;
+    session_begin(&session, seats);
+
+    Game *game = &games[0];   /* the seat the warm-up and the demo use */
 
     /* The demo needs a game to have been built, so it is set up here rather
        than beside the other view flags above. */
-    if (show_demo) ui_start_demo(&ui, &game);
+    if (show_demo) ui_start_demo(&ui, game);
 
     /* Starting later is a measurement tool rather than a cheat: the difficulty
        ramp only shows itself over a dozen stages, and playing up to stage 12 to
        check a number is not a test anybody runs twice. */
     if (first_stage > 1) {
-        game.first_stage = first_stage;
-        game.quiet = true;
-        game_restart(&game);
-        game.quiet = false;
+        for (int i = 0; i < SEATS; ++i) {
+            games[i].first_stage = first_stage;
+            games[i].quiet = true;
+            game_restart(&games[i]);
+            games[i].quiet = false;
+        }
     }
 
-    game.wave.show_paths = paths;
-    game.invulnerable    = observe;
-    game.trace           = trace;
+    /* Every seat, not just the first. Setting them on one meant a two-player
+       run traced only half its own handovers, which looked like the turns not
+       alternating when they were. */
+    for (int i = 0; i < SEATS; ++i) {
+        games[i].wave.show_paths = paths;
+        games[i].invulnerable    = observe;
+        games[i].trace           = trace;
+    }
 
     /* --stats exercises the wave on its own rather than the whole game: who
        attacks and how often is a property of the wave, and letting the fighter
        die mid-run would restart it and skew the tally. */
     if (stats > 0) {
-        for (int i = 0; i < stats; ++i) wave_update(&game.wave, game.player.x);
-        wave_print_stats(&game.wave);
+        for (int i = 0; i < stats; ++i) wave_update(&game->wave, game->player.x);
+        wave_print_stats(&game->wave);
         input_close();
         audio_shutdown();
         gfx_shutdown(&g);
@@ -690,7 +820,7 @@ int main(int argc, char **argv)
        --observe to stop the fighter dying and restarting the run. */
     for (int i = 0; i < warmup; ++i) {
         Input warm = autofire ? demo_input(i) : (Input){ false, false, false };
-        play_tick(&game, &warm, WARMUP_TO_TITLE, &ui.view, &ui.menu_sel);
+        session_tick(&session, &warm, WARMUP_TO_TITLE, &ui.view, &ui.menu_sel);
     }
 
     /* Fixed 60Hz steps with an accumulator, so the simulation does not change
@@ -710,7 +840,7 @@ int main(int argc, char **argv)
 
             if (ev.type == SDL_KEYDOWN || ev.type == SDL_CONTROLLERBUTTONDOWN ||
                 ev.type == SDL_MOUSEBUTTONDOWN) {
-                ui_awake(&ui, &game);
+                ui_awake(&ui, game);
             }
 
             if (ev.type == SDL_QUIT) {
@@ -727,7 +857,7 @@ int main(int argc, char **argv)
                         ui.set->fullscreen = !ui.set->fullscreen;
                         ui_apply_settings(&ui);
                     } else {
-                        ui_confirm(&ui, &game);
+                        ui_confirm(&ui);
                     }
                     break;
                 case SDLK_LEFT:
@@ -746,13 +876,15 @@ int main(int argc, char **argv)
                     break;
 
                 case SDLK_r:
-                    if (ui.view == VIEW_PLAY) game_restart(&game);
+                    if (ui.view == VIEW_PLAY) session_begin(&session, session.seats);
                     break;
                 case SDLK_F2:
-                    game.wave.show_paths = !game.wave.show_paths;
+                    games[session.turn].wave.show_paths =
+                        !games[session.turn].wave.show_paths;
                     break;
                 case SDLK_F3:
-                    game.wave.attacks_enabled = !game.wave.attacks_enabled;
+                    games[session.turn].wave.attacks_enabled =
+                        !games[session.turn].wave.attacks_enabled;
                     break;
                 default: break;
                 }
@@ -764,7 +896,7 @@ int main(int argc, char **argv)
            events and are only noticed when the sticks are sampled. They go
            through the very same handlers the keys do. */
         for (UiAction a = input_take_ui(); a != UI_NONE; a = input_take_ui()) {
-            ui_awake(&ui, &game);
+            ui_awake(&ui, game);
             switch (a) {
             case UI_UP:        ui_up(&ui);             break;
             case UI_DOWN:      ui_down(&ui);           break;
@@ -772,7 +904,7 @@ int main(int argc, char **argv)
             case UI_RIGHT:     ui_adjust(&ui, +1);     break;
             case UI_CONFIRM:
                 if (ui.view == VIEW_PLAY && !ui.options) ui_toggle_pause(&ui);
-                else                                     ui_confirm(&ui, &game);
+                else                                     ui_confirm(&ui);
                 break;
             case UI_BACK:      ui_back(&ui);           break;
             case UI_NEXT_VIEW: ui_next_view(&ui);      break;
@@ -807,23 +939,23 @@ int main(int argc, char **argv)
                    starfield, since stars drifting behind a frozen board is
                    exactly what a hang looks like. */
                 if (!ui.paused) {
-                    play_tick(&game, &in, true, &ui.view, &ui.menu_sel);
+                    session_tick(&session, &in, true, &ui.view, &ui.menu_sel);
                 }
             } else if (ui.view == VIEW_DEMO) {
                 Input hands = demo_input(tick);
-                game_update(&game, &hands);
+                game_update(game, &hands);
 
                 /* It ends when its time is up or when it loses, whichever
                    comes first - a demonstration that sat on a results screen
                    would be showing the one part of the game nobody needs
                    advertising. */
-                if (--ui.demo <= 0 || game.finished || game.results > 0) {
+                if (--ui.demo <= 0 || game->finished || game->results > 0) {
                     SDL_Log("attract: demo over after %d ticks%s",
                             DEMO_LENGTH - ui.demo,
-                            game.finished || game.results > 0 ? " (lost)" : "");
+                            game->finished || game->results > 0 ? " (lost)" : "");
                     ui.demo    = 0;
                     ui.idle    = 0;
-                    game.demo  = false;
+                    game->demo = false;
                     ui.view    = VIEW_TITLE;
                 }
             } else {
@@ -834,7 +966,7 @@ int main(int argc, char **argv)
                    the shape tools are places somebody is deliberately looking
                    at something. */
                 if (ui.view == VIEW_TITLE && !ui.options) {
-                    if (++ui.idle >= IDLE_BEFORE_DEMO) ui_start_demo(&ui, &game);
+                    if (++ui.idle >= IDLE_BEFORE_DEMO) ui_start_demo(&ui, game);
                 } else {
                     ui.idle = 0;
                 }
@@ -850,10 +982,20 @@ int main(int argc, char **argv)
         gfx_begin_frame(&g);
         if (ui.options)               options_draw(&g, &settings, ui.opt_sel);
         else if (ui.view == VIEW_TITLE)  title_draw(&g, ui.menu_sel, tick);
-        else if (ui.view == VIEW_PLAY)   game_draw(&g, &game);
-        else if (ui.view == VIEW_DEMO)   demo_draw(&g, &game, tick);
+        else if (ui.view == VIEW_PLAY)   game_draw(&g, &games[session.turn]);
+        else if (ui.view == VIEW_DEMO)   demo_draw(&g, game, tick);
         else if (ui.view == VIEW_POSE)   pose_draw(&g, ui.subject);
         else                          shapes_draw(&g, tick);
+
+        /* Whose turn it is now, over their own frozen board. */
+        if (session.handover > 0 && ui.view == VIEW_PLAY && !ui.options) {
+            char who[24];
+            snprintf(who, sizeof who, "PLAYER %d", session.turn + 1);
+            font_draw_scaled(&g, (GAME_W - font_width_scaled(who, 2.0f)) / 2,
+                             GAME_H * 0.5f - 8.0f, YELLOW, who, 2.0f);
+            const char *r = "READY";
+            font_draw(&g, (GAME_W - font_width(r)) / 2, GAME_H / 2 + 14, CYAN, r);
+        }
 
         /* Over the frozen board rather than instead of it: seeing where
            everything stopped is most of the reason to pause. */
