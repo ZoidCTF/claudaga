@@ -283,6 +283,17 @@ bool wave_settled(const Wave *w);
    board handed back mid-stage needs it tripped again. */
 void wave_rearm_attacks(Wave *w);
 
+/* How close the entry paths come to the fighter's row, in pixels, and which
+   path is worst.
+
+   An enemy flying in cannot be dodged the way a diver can: it arrives from
+   off-screen, so the first the player knows of it is the collision. Anything
+   that reaches the row is therefore an unavoidable death, and anything that
+   comes near it is a fright. Dives are exempt and always will be - the whole
+   point of a dive is that you watch it coming down at you. */
+float wave_entry_clearance(const Wave *w, int *worst_path, float *offscreen_low);
+const char *wave_path_name(int path);
+
 /* Names what is still moving, for when a wait for quiet does not end. */
 void wave_print_unsettled(const Wave *w);
 
@@ -359,6 +370,12 @@ bool wave_hit(Wave *w, int index, int *score, int *popup);
    art inside a 16x16 cell is smaller than the cell, so this is tighter than
    half a sprite. */
 #define ENEMY_HIT_RADIUS 7.0f
+
+/* How close an enemy's body has to be to the fighter to kill it. Declared here
+   rather than beside the other collision radii because the entry paths are
+   checked against it, and a threshold with two definitions is a threshold that
+   will eventually have two values. */
+#define ENEMY_SHIP_RADIUS 9.0f
 
 /* Where a formation slot sits on screen. */
 Vec2 formation_slot_pos(int slot);

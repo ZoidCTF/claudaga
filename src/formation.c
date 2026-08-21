@@ -77,14 +77,21 @@ static const Vec2 CTRL_TOP_DIVE[] = {
     {  34, 168 }, {  62, 158 }, {  94, 150 },
 };
 
-/* Up from below the bottom-left corner, climbing the left edge, into a loop
-   across the top, ending back below the formation like the dive does.
-   Deliberately shaped to occupy a different band of the screen than the dive,
-   so two flights in the air at once stay legible. */
+/* In from the left edge, climbing, into a loop across the top, ending back
+   below the formation like the dive does. Deliberately shaped to occupy a
+   different band of the screen than the dive, so two flights in the air at once
+   stay legible.
+
+   It used to start below the bottom-left corner and climb the left edge, which
+   ran it straight along the fighter's row on the way in - and an enemy that
+   arrives from off-screen at the fighter's own altitude cannot be dodged,
+   because the first the player sees of it is the collision. Coming down at the
+   fighter from above is fair; arriving beside it out of nothing is not. It now
+   enters well above the row and never goes back down. */
 static const Vec2 CTRL_SWEEP[] = {
-    { -24, 312 }, {  10, 272 }, {  36, 226 }, {  50, 178 },
-    {  54, 132 }, {  70,  96 }, { 102,  78 }, { 134,  90 },
-    { 144, 120 }, { 122, 142 }, {  96, 134 },
+    { -28, 196 }, {   4, 182 }, {  32, 162 }, {  50, 136 },
+    {  56, 110 }, {  72,  88 }, { 102,  74 }, { 134,  88 },
+    { 144, 118 }, { 122, 142 }, {  96, 134 },
 };
 
 /* The way home after a dive. A diver leaves the bottom of the screen, so it
@@ -1570,6 +1577,16 @@ void wave_print_stats(const Wave *w)
     printf("parked enemies sat between %+.1f and %+.1f px from their slots\n",
            w->park_off_min, w->park_off_max);
     printf("closest two enemies sharing a path: %.1f px\n", w->min_lane_gap);
+    {
+        int   worst = -1;
+        float low   = 0.0f;
+        float clear = wave_entry_clearance(w, &worst, &low);
+        printf("entry paths clear the fighter's row by %.0f px, worst is %s "
+               "(under %.0f is an unavoidable hit)\n",
+               clear, wave_path_name(worst), (double)ENEMY_SHIP_RADIUS);
+        printf("  and while off the side of the screen they get no lower than "
+               "y=%.0f, %.0f px above the row\n", low, (double)PLAYER_Y - low);
+    }
     if (w->challenge) {
         printf("challenging stage - no entry set, and nothing shoots\n");
     } else {
@@ -1755,6 +1772,47 @@ bool wave_settled(const Wave *w)
         }
     }
     return true;
+}
+
+const char *wave_path_name(int path)
+{
+    static const char *NAME[PATH_COUNT] = {
+        "top dive L", "top dive R", "sweep L", "sweep R",
+        "return L",   "return R",   "corner L", "corner R",
+        "chal A L",   "chal A R",   "chal B L", "chal B R",
+        "chal C L",   "chal C R",   "chal D L", "chal D R",
+    };
+    return (path >= 0 && path < PATH_COUNT) ? NAME[path] : "?";
+}
+
+float wave_entry_clearance(const Wave *w, int *worst_path, float *offscreen_low)
+{
+    float worst = 1e9f;
+    float low   = -1e9f;
+    int   which = -1;
+
+    /* The entry paths only. A bonus round's flyers cannot touch the fighter,
+       and the dive paths are meant to reach it. */
+    for (int p = PATH_TOP_DIVE_L; p <= PATH_CORNER_R; ++p) {
+        const Path *path = &w->paths[p];
+        for (int i = 0; i < path->n; ++i) {
+            Vec2 q = path->pt[i];
+
+            float d = fabsf(q.y - (float)PLAYER_Y);
+            if (d < worst) { worst = d; which = p; }
+
+            /* And how far down anything gets while it is still off the side of
+               the screen, which is the shape of the complaint: an enemy that
+               is created out there and flies in along the fighter's row is not
+               a thing anybody can dodge, because the first they see of it is
+               the collision. */
+            if ((q.x < 0.0f || q.x > (float)GAME_W) && q.y > low) low = q.y;
+        }
+    }
+
+    if (worst_path)    *worst_path    = which;
+    if (offscreen_low) *offscreen_low = low;
+    return worst;
 }
 
 void wave_rearm_attacks(Wave *w)

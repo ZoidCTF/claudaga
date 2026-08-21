@@ -53,7 +53,7 @@ static const SDL_Color DIM    = { 150, 150, 168, 255 };
    more than being geometrically exact. */
 #define R_SHOT_ENEMY    (ENEMY_HIT_RADIUS + 2.0f)
 #define R_MISSILE_SHIP  8.0f
-#define R_ENEMY_SHIP    9.0f
+#define R_ENEMY_SHIP    ENEMY_SHIP_RADIUS
 
 /* ------------------------------------------------------------------ stars */
 
