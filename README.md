@@ -853,6 +853,21 @@ block is home. That is why the settling phase waits on `wave_settled` - nothing
 in the air - rather than `wave_all_formed`, which a half-entered board would
 never satisfy.
 
+**A held schedule has to wait along with the enemy.** The first version held the
+launches but let the wave's tick run on underneath them - about two hundred and
+fifty ticks across a handover - so every enemy still waiting had a launch time
+already in the past, and the whole lot went out on the single tick the hold
+lifted, stacked on top of one another. Both symptoms reported were that: player
+two's first entry arriving overlapped, and a stray enemy appearing out of the
+formation's return.
+
+The number that caught it was already there. `min_lane_gap` is the closest two
+enemies have come while flying the same entry path, and it was written for
+exactly this shape of bug in the original entry lanes. One player read 42.0px;
+two players read **0.0px on both seats**. It reads 42.0 and 46.7 now. `--stats`
+cannot measure a session, so a traced run prints it per seat at the end of the
+warm-up instead.
+
 Measured on the session's own clock, which is the only one that runs
 continuously - each seat's game tick stops while the other plays: a handover
 takes 266 to 408 ticks end to end, most of it the settling, which varies with

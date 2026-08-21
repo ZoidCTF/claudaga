@@ -906,6 +906,21 @@ int main(int argc, char **argv)
         session_tick(&session, &warm, WARMUP_TO_TITLE, &ui.view, &ui.menu_sel);
     }
 
+    /* The closest two enemies ever came while flying the same entry path, per
+       seat. --stats reports this for a wave driven on its own, but it cannot
+       drive a session, and a session is where it goes wrong: handing a board
+       away and bringing it back is exactly the sort of thing that stacks an
+       entry. Two players read 0.0px here before the launch schedule was taught
+       to wait along with the hold. */
+    if (trace && warmup > 0) {
+        for (int i = 0; i < SEATS; ++i) {
+            float gap = games[i].wave.min_lane_gap;
+            if (gap > 1e8f) continue;          /* that seat never played */
+            printf("seat %d: closest two enemies on one path %.1f px\n",
+                   i + 1, gap);
+        }
+    }
+
     /* Fixed 60Hz steps with an accumulator, so the simulation does not change
        speed if the display refreshes at some other rate. */
     const double STEP = 1.0 / 60.0;

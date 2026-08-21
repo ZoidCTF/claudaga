@@ -1360,7 +1360,16 @@ void wave_update(Wave *w, float player_x)
 
         switch (e->state) {
         case ENEMY_WAITING:
-            if (!w->entries_held && w->tick >= e->launch_tick) {
+            /* A held schedule waits with the enemy rather than running on
+               without it. The wave's tick keeps advancing while a board is
+               being packed away and brought back - two hundred and fifty of
+               them across a handover - and a launch time left behind by that
+               is a launch time already past, so every enemy still waiting went
+               out on the single tick the hold lifted, stacked on top of one
+               another. Carrying the times along keeps the gaps between them. */
+            if (w->entries_held) { ++e->launch_tick; break; }
+
+            if (w->tick >= e->launch_tick) {
                 e->state   = ENEMY_ENTERING;
                 e->s       = 0.0f;
                 e->pos     = path_point(p, 0.0f);
