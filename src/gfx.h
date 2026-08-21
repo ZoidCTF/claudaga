@@ -22,6 +22,13 @@ void gfx_shutdown(Gfx *g);
    buffer's contents are not guaranteed to survive. */
 bool gfx_screenshot(Gfx *g, const char *path);
 
+/* Borderless fullscreen, and nothing else. The renderer already scales the
+   224x288 picture to whatever size the window is, so there is no resolution to
+   choose and no mode to switch: the desktop's own is always the right one.
+   Exclusive fullscreen would buy nothing here and cost alt-tab behaviour. */
+void gfx_set_fullscreen(Gfx *g, bool on);
+bool gfx_is_fullscreen(const Gfx *g);
+
 void gfx_begin_frame(Gfx *g);
 void gfx_end_frame(Gfx *g);
 

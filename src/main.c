@@ -22,6 +22,7 @@
 #include "game.h"
 #include "audio.h"
 #include "input.h"
+#include "settings.h"
 
 /* A headless fast-forward starts a fresh game rather than stopping on the
    menu. Flip this to exercise the interactive path through --at. */
@@ -109,16 +110,38 @@ static void title_draw(Gfx *g, int menu_sel, int tick)
     font_draw(g, 4, GAME_H - 9, DIM, "TAB TOOLS");
 }
 
-static void options_draw(Gfx *g)
+/* The rows of the options page, in the order they are drawn. */
+typedef enum { OPT_SFX, OPT_MUSIC, OPT_FULLSCREEN, OPT_COUNT } OptRow;
+
+/* A level as a row of blocks rather than a number. Ten of them, lit up to the
+   value: a bar can be read at a glance from across a room, which is the whole
+   point of a setting you are adjusting by ear while it plays. */
+static void draw_bar(Gfx *g, float x, float y, int value, bool on)
+{
+    const float W = 7.0f, H = 7.0f, GAP = 2.0f;
+    for (int i = 0; i < VOLUME_STEPS; ++i) {
+        float bx = x + i * (W + GAP);
+        Vec2 quad[4] = {
+            { bx,     y     }, { bx + W, y     },
+            { bx + W, y + H }, { bx,     y + H },
+        };
+        SDL_Color c;
+        if (i < value) c = on ? YELLOW : DIM;
+        else           c = (SDL_Color){ 48, 48, 60, 255 };
+        shape_draw_poly(g, quad, 4, c);
+    }
+}
+
+static void options_draw(Gfx *g, const Settings *set, int sel)
 {
     game_background_draw(g);
     const char *h = "OPTIONS";
     font_draw_scaled(g, (GAME_W - font_width_scaled(h, 2.0f)) / 2, 50.0f,
                      YELLOW, h, 2.0f);
 
-    /* Nothing is configurable yet, but what is plugged in is worth saying:
-       "does it see my controller" is the first question anyone asks, and a
-       menu that cannot answer it sends them to the game to find out. */
+    /* What is plugged in is worth saying: "does it see my controller" is the
+       first question anyone asks, and a menu that cannot answer it sends them
+       to the game to find out. */
     char buf[48];
     int pads = input_pads();
     if (pads > 0) {
@@ -126,7 +149,36 @@ static void options_draw(Gfx *g)
     } else {
         snprintf(buf, sizeof buf, "CONTROLLER  NONE");
     }
-    font_draw(g, (GAME_W - font_width(buf)) / 2, 108, pads > 0 ? CYAN : DIM, buf);
+    font_draw(g, (GAME_W - font_width(buf)) / 2, 154, pads > 0 ? CYAN : DIM, buf);
+
+    /* The three settings. The cursor is the fighter, as it is on the menu -
+       one cursor for the whole game rather than a second idea of what selected
+       looks like. */
+    const int LABEL_X = 34, VALUE_X = 116;
+    for (int row = 0; row < OPT_COUNT; ++row) {
+        int   y  = 84 + row * 16;
+        bool  on = (row == sel);
+        SDL_Color c = on ? YELLOW : DIM;
+
+        static const char *NAMES[OPT_COUNT] = { "SOUND", "MUSIC", "FULL SCREEN" };
+        font_draw(g, LABEL_X, y, c, NAMES[row]);
+
+        if (row == OPT_FULLSCREEN) {
+            font_draw(g, VALUE_X, y, on ? PALE : DIM,
+                      set->fullscreen ? "ON" : "OFF");
+        } else {
+            draw_bar(g, (float)VALUE_X, (float)y - 1.0f,
+                     row == OPT_SFX ? set->sfx : set->music, on);
+        }
+
+        if (on) {
+            Vec2 cur = { (float)LABEL_X - 12.0f, (float)y + FONT_H * 0.5f };
+            shape_draw(g, SHP_FIGHTER, cur, HEADING_E, 0.85f);
+        }
+    }
+
+    const char *hint = "LEFT RIGHT TO CHANGE";
+    font_draw(g, (GAME_W - font_width(hint)) / 2, 138, DIM, hint);
 
     /* The controls as three columns rather than two centred sentences. The
        sentences were 38 characters, and 38 characters at a six pixel advance
@@ -136,19 +188,16 @@ static void options_draw(Gfx *g)
        lines never does. */
     const int COL_WHO = 30, COL_FLY = 72, COL_FIRE = 166;
 
-    font_draw(g, COL_FLY,  126, DIM, "FLY");
-    font_draw(g, COL_FIRE, 126, DIM, "FIRE");
+    font_draw(g, COL_FLY,  168, DIM, "FLY");
+    font_draw(g, COL_FIRE, 168, DIM, "FIRE");
 
-    font_draw(g, COL_WHO,  140, CYAN, "PAD");
-    font_draw(g, COL_FLY,  140, PALE, "STICK OR DPAD");
-    font_draw(g, COL_FIRE, 140, PALE, "A");
+    font_draw(g, COL_WHO,  182, CYAN, "PAD");
+    font_draw(g, COL_FLY,  182, PALE, "STICK OR DPAD");
+    font_draw(g, COL_FIRE, 182, PALE, "A");
 
-    font_draw(g, COL_WHO,  152, CYAN, "KEYS");
-    font_draw(g, COL_FLY,  152, PALE, "ARROWS");
-    font_draw(g, COL_FIRE, 152, PALE, "SPACE");
-
-    const char *a = "VOLUME SETTINGS TO COME";
-    font_draw(g, (GAME_W - font_width(a)) / 2, 176, DIM, a);
+    font_draw(g, COL_WHO,  194, CYAN, "KEYS");
+    font_draw(g, COL_FLY,  194, PALE, "ARROWS");
+    font_draw(g, COL_FIRE, 194, PALE, "SPACE");
 
     const char *back = "ESC BACK";
     font_draw(g, (GAME_W - font_width(back)) / 2, GAME_H - 40, CYAN, back);
@@ -272,7 +321,7 @@ static void usage(void)
             "                [--at TICK] [--paths] [--observe] [--autofire]\n"
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "                [--stage N] [--mute] [--padtest] [--options]\n"
-            "                [--audiotest [DIR]]\n"
+            "                [--audiotest [DIR]] [--paused]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -289,25 +338,92 @@ typedef struct {
     bool options;
     bool running;
     int  subject;
+
+    int  opt_sel;      /* which row of the options page                   */
+    bool paused;       /* the game is up but not running                  */
+
+    /* Not owned here, but every menu action needs them. Passing them through
+       each handler instead would mean five signatures changing every time a
+       setting is added. */
+    Settings *set;
+    Gfx      *gfx;
 } Ui;
+
+/* Everything a changed setting has to touch. Called from one place so that a
+   setting cannot be applied in one direction and forgotten in the other -
+   loading at startup and adjusting on the page go through the same code. */
+static void ui_apply_settings(Ui *u)
+{
+    audio_set_levels(u->set->sfx, u->set->music);
+    if (u->gfx) gfx_set_fullscreen(u->gfx, u->set->fullscreen);
+    settings_save(u->set);
+}
 
 static void ui_up(Ui *u)
 {
-    if (u->view == VIEW_TITLE && !u->options) {
+    if (u->options)      u->opt_sel  = (u->opt_sel + OPT_COUNT - 1) % OPT_COUNT;
+    else if (u->view == VIEW_TITLE) {
         u->menu_sel = (u->menu_sel + MENU_COUNT - 1) % MENU_COUNT;
     }
 }
 
 static void ui_down(Ui *u)
 {
-    if (u->view == VIEW_TITLE && !u->options) {
+    if (u->options)      u->opt_sel  = (u->opt_sel + 1) % OPT_COUNT;
+    else if (u->view == VIEW_TITLE) {
         u->menu_sel = (u->menu_sel + 1) % MENU_COUNT;
     }
 }
 
+/* Left and right change the selected setting, and mean nothing anywhere else
+   except the pose tool, which uses them to pick a shape. */
+static void ui_adjust(Ui *u, int delta)
+{
+    if (u->options) {
+        switch (u->opt_sel) {
+        case OPT_SFX:
+            u->set->sfx = u->set->sfx + delta;
+            if (u->set->sfx < 0)            u->set->sfx = 0;
+            if (u->set->sfx > VOLUME_STEPS) u->set->sfx = VOLUME_STEPS;
+            break;
+        case OPT_MUSIC:
+            u->set->music = u->set->music + delta;
+            if (u->set->music < 0)            u->set->music = 0;
+            if (u->set->music > VOLUME_STEPS) u->set->music = VOLUME_STEPS;
+            break;
+        case OPT_FULLSCREEN:
+            u->set->fullscreen = !u->set->fullscreen;
+            break;
+        default: break;
+        }
+        ui_apply_settings(u);
+        return;
+    }
+
+    if (u->view == VIEW_POSE) {
+        int n = (int)ARRAY_COUNT(POSE_SUBJECTS);
+        u->subject = (u->subject + n + (delta > 0 ? 1 : -1)) % n;
+    }
+}
+
+/* Pause only means anything with a game on screen. Sound stops with it: a
+   paused game that keeps playing its music reads as one that has hung. */
+static void ui_toggle_pause(Ui *u)
+{
+    if (u->view != VIEW_PLAY || u->options) return;
+    u->paused = !u->paused;
+    audio_pause(u->paused);
+}
+
 static void ui_confirm(Ui *u, Game *game)
 {
-    if (u->view != VIEW_TITLE || u->options) return;
+    /* On the options page the confirm button flips whatever is selected,
+       which is what a player expects of a row that reads ON or OFF. */
+    if (u->options) {
+        if (u->opt_sel == OPT_FULLSCREEN) ui_adjust(u, 1);
+        return;
+    }
+    if (u->view != VIEW_TITLE) return;
 
     if (u->menu_sel == MENU_START) {
         game_restart(game);
@@ -325,8 +441,14 @@ static void ui_confirm(Ui *u, Game *game)
    further back to go, and QUIT is the way out. */
 static void ui_back(Ui *u)
 {
-    if (u->options)                 u->options = false;
-    else if (u->view != VIEW_TITLE) u->view = VIEW_TITLE;
+    if (u->options) {
+        u->options = false;
+    } else if (u->view != VIEW_TITLE) {
+        /* Leaving a paused game unpauses it, or the next one starts frozen
+           with nothing on screen to say why. */
+        if (u->paused) { u->paused = false; audio_pause(false); }
+        u->view = VIEW_TITLE;
+    }
 }
 
 static void ui_next_view(Ui *u)
@@ -337,7 +459,9 @@ static void ui_next_view(Ui *u)
 int main(int argc, char **argv)
 {
     const char *shot_path = NULL;
-    Ui          ui        = { VIEW_TITLE, MENU_START, false, true, 0 };
+    Ui          ui        = { VIEW_TITLE, MENU_START, false, true, 0,
+                              OPT_SFX, false, NULL, NULL };
+    Settings    settings;
     bool        view_set  = false;
     int         scale     = 3;
     int         warmup    = 0;
@@ -348,6 +472,7 @@ int main(int argc, char **argv)
     bool        mute      = false;
     bool        padtest   = false;
     bool        show_options = false;
+    bool        show_paused  = false;
     const char *audiodir  = NULL;
     bool        audioreport = false;
     bool        autofire  = false;
@@ -375,6 +500,7 @@ int main(int argc, char **argv)
             if (i + 1 < argc && argv[i + 1][0] != 0x2D) audiodir = argv[++i];
         }
         else if (!strcmp(argv[i], "--options")) { show_options = true; view_set = true; }
+        else if (!strcmp(argv[i], "--paused"))  { show_paused  = true; view_set = true; }
         else { usage(); return 1; }
     }
     if (scale < 1) scale = 1;
@@ -387,6 +513,7 @@ int main(int argc, char **argv)
        pixels too wide for the screen shipped: nothing ever drew it except a
        person clicking through the menu. */
     if (show_options) { ui.view = VIEW_TITLE; ui.options = true; }
+    if (show_paused)  { ui.view = VIEW_PLAY;  ui.paused  = true; }
 
     if (!view_set && (warmup > 0 || stats > 0)) ui.view = VIEW_PLAY;
     if (ui.subject < 0 || ui.subject >= ARRAY_COUNT(POSE_SUBJECTS)) ui.subject = 0;
@@ -410,7 +537,22 @@ int main(int argc, char **argv)
        is pointless, and a --stats run would fire thousands of effects at a
        device nobody is listening to - which is slow, and on some drivers is
        slow enough to matter to a measurement. */
+    /* Loaded before the device is opened so the first sound already plays at
+       the chosen level, rather than at the default for a frame or two. */
+    /* A fresh install gets its defaults written out rather than left implicit,
+       so the file is there to be edited and the save path is exercised by
+       every first run rather than only by someone opening the options page. */
+    if (!settings_load(&settings)) settings_save(&settings);
+    ui.set = &settings;
+    ui.gfx = &g;
+
     audio_init(!mute && (audioreport || (!shot_path && stats <= 0)));
+    audio_set_levels(settings.sfx, settings.music);
+
+    /* Headless runs stay in a window whatever the file says: a screenshot run
+       that took over the display would be a surprising thing for a build
+       script to do. */
+    if (!shot_path && stats <= 0) gfx_set_fullscreen(&g, settings.fullscreen);
 
     if (audioreport) {
         int bad = audio_report(audiodir);
@@ -494,32 +636,37 @@ int main(int argc, char **argv)
                 case SDLK_UP:          ui_up(&ui);              break;
                 case SDLK_DOWN:        ui_down(&ui);            break;
                 case SDLK_RETURN:
-                case SDLK_KP_ENTER:    ui_confirm(&ui, &game);  break;
-                case SDLK_r:
-                    if (ui.view == VIEW_PLAY) game_restart(&game);
-                    break;
-                case SDLK_p:
-                    if (ui.view == VIEW_PLAY) {
-                        game.wave.show_paths = !game.wave.show_paths;
-                    }
-                    break;
-                case SDLK_a:
-                    if (ui.view == VIEW_PLAY) {
-                        game.wave.attacks_enabled = !game.wave.attacks_enabled;
+                case SDLK_KP_ENTER:
+                    if (ev.key.keysym.mod & KMOD_ALT) {
+                        ui.set->fullscreen = !ui.set->fullscreen;
+                        ui_apply_settings(&ui);
+                    } else {
+                        ui_confirm(&ui, &game);
                     }
                     break;
                 case SDLK_LEFT:
-                case SDLK_PAGEUP:
-                    if (ui.view == VIEW_POSE) {
-                        ui.subject = (ui.subject + ARRAY_COUNT(POSE_SUBJECTS) - 1)
-                                % ARRAY_COUNT(POSE_SUBJECTS);
-                    }
-                    break;
+                case SDLK_PAGEUP:      ui_adjust(&ui, -1);      break;
                 case SDLK_RIGHT:
-                case SDLK_PAGEDOWN:
-                    if (ui.view == VIEW_POSE) {
-                        ui.subject = (ui.subject + 1) % ARRAY_COUNT(POSE_SUBJECTS);
-                    }
+                case SDLK_PAGEDOWN:    ui_adjust(&ui, +1);      break;
+
+                /* P is the pause key everyone reaches for, so it is the
+                   player's; the path overlay it used to hold has moved to a
+                   function key with the other debug toggles. */
+                case SDLK_p:           ui_toggle_pause(&ui);    break;
+
+                case SDLK_F11:
+                    ui.set->fullscreen = !ui.set->fullscreen;
+                    ui_apply_settings(&ui);
+                    break;
+
+                case SDLK_r:
+                    if (ui.view == VIEW_PLAY) game_restart(&game);
+                    break;
+                case SDLK_F2:
+                    game.wave.show_paths = !game.wave.show_paths;
+                    break;
+                case SDLK_F3:
+                    game.wave.attacks_enabled = !game.wave.attacks_enabled;
                     break;
                 default: break;
                 }
@@ -534,7 +681,12 @@ int main(int argc, char **argv)
             switch (a) {
             case UI_UP:        ui_up(&ui);             break;
             case UI_DOWN:      ui_down(&ui);           break;
-            case UI_CONFIRM:   ui_confirm(&ui, &game); break;
+            case UI_LEFT:      ui_adjust(&ui, -1);     break;
+            case UI_RIGHT:     ui_adjust(&ui, +1);     break;
+            case UI_CONFIRM:
+                if (ui.view == VIEW_PLAY && !ui.options) ui_toggle_pause(&ui);
+                else                                     ui_confirm(&ui, &game);
+                break;
             case UI_BACK:      ui_back(&ui);           break;
             case UI_NEXT_VIEW: ui_next_view(&ui);      break;
             case UI_NONE:                              break;
@@ -564,7 +716,12 @@ int main(int argc, char **argv)
             accum -= STEP;
             ++tick;
             if (ui.view == VIEW_PLAY) {
-                play_tick(&game, &in, true, &ui.view, &ui.menu_sel);
+                /* A paused game is drawn but not stepped - including the
+                   starfield, since stars drifting behind a frozen board is
+                   exactly what a hang looks like. */
+                if (!ui.paused) {
+                    play_tick(&game, &in, true, &ui.view, &ui.menu_sel);
+                }
             } else {
                 game_background_update();
 
@@ -577,11 +734,21 @@ int main(int argc, char **argv)
         }
 
         gfx_begin_frame(&g);
-        if (ui.options)                  options_draw(&g);
+        if (ui.options)               options_draw(&g, &settings, ui.opt_sel);
         else if (ui.view == VIEW_TITLE)  title_draw(&g, ui.menu_sel, tick);
         else if (ui.view == VIEW_PLAY)   game_draw(&g, &game);
         else if (ui.view == VIEW_POSE)   pose_draw(&g, ui.subject);
         else                          shapes_draw(&g, tick);
+
+        /* Over the frozen board rather than instead of it: seeing where
+           everything stopped is most of the reason to pause. */
+        if (ui.paused && ui.view == VIEW_PLAY && !ui.options) {
+            const char *m = "PAUSED";
+            font_draw_scaled(&g, (GAME_W - font_width_scaled(m, 2.0f)) / 2,
+                             GAME_H * 0.5f - 8.0f, YELLOW, m, 2.0f);
+            const char *k = "P TO RESUME   ESC FOR MENU";
+            font_draw(&g, (GAME_W - font_width(k)) / 2, GAME_H / 2 + 14, DIM, k);
+        }
 
         if (shot_path) {
             gfx_screenshot(&g, shot_path);

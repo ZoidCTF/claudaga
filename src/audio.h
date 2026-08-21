@@ -67,6 +67,16 @@ void audio_play(SfxId id);
    what it started. */
 void audio_music(MusicId id);
 
+/* Sets the two levels, each 0..VOLUME_STEPS. Effects and music are separate
+   because they are competing for the same ear: the music is the thing you turn
+   down to hear the game, and the effects are the thing you turn down when
+   somebody else is in the room. */
+void audio_set_levels(int sfx, int music);
+
+/* Silences everything without losing its place, for a paused game. Music
+   resumes where it stopped rather than restarting, which a halt would not. */
+void audio_pause(bool paused);
+
 /* Fades the current track out over a few hundred milliseconds. A cut to
    silence at the end of a bonus round is more noticeable than the music. */
 void audio_music_stop(void);

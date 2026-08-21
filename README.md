@@ -83,7 +83,7 @@ one frame and exits, `--stats N` runs the wave headless for N ticks and reports
 what the stage's difficulty works out to and how the wave behaved under it,
 `--stage N` starts on a later stage so that difficulty can be measured without
 playing up to it, `--mute` opens no audio device, `--padtest` runs the
-controller self test and exits, `--options` opens on the options page so it can
+controller self test and exits, `--options` and `--paused` open on those screens so they can
 be screenshot, `--audiotest [DIR]` reports the mixer's capacity and measures
 every sound, and `--trace` logs each stage handover.
 `--shot` and `--stats` mute themselves.
@@ -889,27 +889,52 @@ chosen because they are pleasant to author and tune, not because they are what
 the hardware did. Worth knowing if the goal ever shifts from *looks like Galaga*
 to *behaves like Galaga*.
 
+## Settings
+
+Three things arrived together because they share one missing piece: somewhere
+to keep a preference. That goes beside the high score, in whatever directory
+`SDL_GetPrefPath` names, but in a file of its own - the two are written at
+different moments, the score when a game ends and these the instant they are
+changed, and sharing a file would mean one rewriting the other's value from a
+stale copy.
+
+The file is read as key and value rather than by position, so a file written by
+an older build still yields whatever it does carry and the rest stay at their
+defaults. A fresh install has its defaults written out rather than left
+implicit, which puts the file there to be edited and means every first run
+exercises the save path rather than only someone opening the page.
+
+**The defaults are chosen to land on the mix the game already shipped with**, so
+a player who never opens the page hears exactly what they always did: sound 6
+and music 4 of 10 come out at 76 and 51 of 128, which are precisely the two
+constants they replaced. `--audiotest` reports both levels, which is how that
+was checked rather than assumed.
+
+**Fullscreen is borderless and nothing else.** The renderer already scales the
+224x288 picture to whatever size the window is, so there is no resolution to
+choose and no mode to switch - the desktop's own is always the right one.
+Exclusive fullscreen would buy nothing here and would cost alt-tab behaviour.
+F11 and Alt+Enter toggle it; a headless run stays windowed whatever the file
+says, since a screenshot run that took over the display would be a surprising
+thing for a build script to do.
+
+**Pause** freezes the board, the starfield and the sound. The starfield matters:
+stars drifting behind a frozen formation is exactly what a hang looks like. Music
+pauses rather than halting, so it resumes where it stopped. Leaving a paused game
+for the menu unpauses it, or the next one would start frozen with nothing on
+screen to say why.
+
+P is the pause key, which meant evicting the path overlay it used to hold; that
+and the attack toggle are on F2 and F3 now, with the other debug controls. On a
+pad, Start pauses - it already confirmed on menus, and there was nothing for it
+to confirm during play.
+
 ## Next
 
-**Settings.** Three things want doing together, because they share the same
-missing piece - somewhere to keep a preference. The high score already proves
-out where that goes (`SDL_GetPrefPath`), so this is mostly plumbing:
-
-- Effect and music volumes, which the Options screen has room for and reports
-  nothing about yet. `Mix_Volume` and `Mix_VolumeMusic` are already the single
-  points they would drive.
-- Borderless fullscreen. `SDL_RenderSetLogicalSize` already scales the 224x288
-  picture to any window, so `SDL_WINDOW_FULLSCREEN_DESKTOP` needs no resolution
-  list and no mode switch - a toggle and a remembered flag is the whole feature.
-  Exclusive fullscreen would buy nothing here and costs alt-tab behaviour.
-- A pause. Escape currently goes to the menu, which abandons the run; an arcade
-  cabinet had no pause but a game on a desktop wants one.
-
-**Then, in rough order of how much they would add:** an attract mode, since the
-title screen is currently a static menu where the arcade played a demo; initials
-against a high score rather than a bare number; and varying the formation entry
-flights per stage, which are the same five every time where the arcade shuffles
-them.
+**In rough order of how much they would add:** an attract mode, since the title
+screen is a static menu where the arcade played a demo; initials against a high
+score rather than a bare number; and varying the formation entry flights per
+stage, which are the same five every time where the arcade shuffles them.
 
 Two sounds are still boomier than they want to be and were left alone because
 only the explosions were reported: `bosshit_*` at 0.87 and 0.99 of their energy

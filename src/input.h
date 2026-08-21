@@ -31,6 +31,8 @@ typedef enum {
     UI_NONE,
     UI_UP,
     UI_DOWN,
+    UI_LEFT,
+    UI_RIGHT,
     UI_CONFIRM,
     UI_BACK,
     UI_NEXT_VIEW

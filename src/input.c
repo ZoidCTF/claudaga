@@ -34,8 +34,11 @@ static int                 s_pads;
 static UiAction s_queue[UI_QUEUE];
 static int      s_q_head, s_q_tail;
 
-/* Which way each stick was last seen, so a crossing can be spotted. */
-static int s_menu_dir[MAX_PADS];
+/* Which way each stick was last seen, so a crossing can be spotted. One per
+   axis: a menu with rows and values needs both, and they arm independently -
+   pushing up out of a left-held stick should still count. */
+static int s_menu_dir_y[MAX_PADS];
+static int s_menu_dir_x[MAX_PADS];
 
 static void ui_push(UiAction a)
 {
@@ -88,7 +91,8 @@ static void pad_add(int device_index)
         if (s_pad[i]) continue;
         s_pad[i]      = c;
         s_pad_id[i]   = SDL_JoystickInstanceID(j);
-        s_menu_dir[i] = 0;
+        s_menu_dir_y[i] = 0;
+        s_menu_dir_x[i] = 0;
         ++s_pads;
         SDL_Log("input: controller connected - %s",
                 SDL_GameControllerName(c) ? SDL_GameControllerName(c) : "unnamed");
@@ -144,6 +148,8 @@ void input_event(const SDL_Event *ev)
         switch (ev->cbutton.button) {
         case SDL_CONTROLLER_BUTTON_DPAD_UP:    ui_push(UI_UP);      break;
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  ui_push(UI_DOWN);    break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  ui_push(UI_LEFT);    break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: ui_push(UI_RIGHT);   break;
         case SDL_CONTROLLER_BUTTON_A:
         case SDL_CONTROLLER_BUTTON_START:      ui_push(UI_CONFIRM); break;
         case SDL_CONTROLLER_BUTTON_B:
@@ -205,14 +211,23 @@ void input_sample(Input *in)
            so an action is only queued on the crossing, and the stick has to
            come most of the way back before it can cross again. */
         int y = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY);
-        int dir = s_menu_dir[i];
-        if (dir == 0) {
-            if (y < -MENU_PRESS) { dir = -1; ui_push(UI_UP);   }
-            if (y >  MENU_PRESS) { dir =  1; ui_push(UI_DOWN); }
+        int dy = s_menu_dir_y[i];
+        if (dy == 0) {
+            if (y < -MENU_PRESS) { dy = -1; ui_push(UI_UP);   }
+            if (y >  MENU_PRESS) { dy =  1; ui_push(UI_DOWN); }
         } else if (y > -MENU_RELEASE && y < MENU_RELEASE) {
-            dir = 0;
+            dy = 0;
         }
-        s_menu_dir[i] = dir;
+        s_menu_dir_y[i] = dy;
+
+        int dx = s_menu_dir_x[i];
+        if (dx == 0) {
+            if (x < -MENU_PRESS) { dx = -1; ui_push(UI_LEFT);  }
+            if (x >  MENU_PRESS) { dx =  1; ui_push(UI_RIGHT); }
+        } else if (x > -MENU_RELEASE && x < MENU_RELEASE) {
+            dx = 0;
+        }
+        s_menu_dir_x[i] = dx;
     }
 
     /* Both at once cancels out, the way two arrow keys do. Left and right are

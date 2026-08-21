@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "settings.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -15,8 +16,10 @@
 #define AUDIO_BUFFER   512
 #define AUDIO_CHANNELS 16
 
-#define SFX_VOLUME   (MIX_MAX_VOLUME * 3 / 5)
-#define MUSIC_VOLUME (MIX_MAX_VOLUME * 2 / 5)
+/* The two levels, as a fraction of MIX_MAX_VOLUME. A channel's final level is
+   its chunk volume times its channel volume, so setting every channel here
+   scales the whole effect bus while the per-effect trims below keep their
+   relationship to each other. */
 #define FADE_MS      400
 
 #define MAX_VARIANTS 3
@@ -30,7 +33,7 @@ typedef struct {
    generated from a stem and a count because the extensions differ - the
    Kenney effects are Vorbis and the jingles are WAV - and because a table you
    can read is worth more here than one you can loop over. */
-/* Each effect carries its own level, applied on top of SFX_VOLUME. Full is
+/* Each effect carries its own level, applied on top of the effect bus. Full is
    MIX_MAX_VOLUME, which is what an effect got before any of this existed, so
    a table of full values plays exactly as the game always did and anything
    below it is a deliberate trim of one sound.
@@ -124,9 +127,8 @@ void audio_init(bool enabled)
     }
 
     Mix_AllocateChannels(AUDIO_CHANNELS);
-    Mix_Volume(-1, SFX_VOLUME);
-    Mix_VolumeMusic(MUSIC_VOLUME);
     s_on = true;
+    audio_set_levels(SETTINGS_SFX_DEFAULT, SETTINGS_MUSIC_DEFAULT);
 
     char path[1024];
     int  expected = MUSIC_COUNT;
@@ -190,6 +192,28 @@ void audio_shutdown(void)
     s_on      = false;
     s_loaded  = 0;
     s_playing = -1;
+}
+
+void audio_set_levels(int sfx, int music)
+{
+    if (!s_on) return;
+    if (sfx   < 0) sfx   = 0;  if (sfx   > VOLUME_STEPS) sfx   = VOLUME_STEPS;
+    if (music < 0) music = 0;  if (music > VOLUME_STEPS) music = VOLUME_STEPS;
+
+    Mix_Volume(-1, MIX_MAX_VOLUME * sfx / VOLUME_STEPS);
+    Mix_VolumeMusic(MIX_MAX_VOLUME * music / VOLUME_STEPS);
+}
+
+void audio_pause(bool paused)
+{
+    if (!s_on) return;
+    if (paused) {
+        Mix_Pause(-1);
+        Mix_PauseMusic();
+    } else {
+        Mix_Resume(-1);
+        Mix_ResumeMusic();
+    }
 }
 
 bool audio_ok(void)
@@ -323,6 +347,10 @@ static void report_overlap(void)
         if (Mix_PlayChannel(-1, c, 0) >= 0) ++started;
     }
     int sounding = Mix_Playing(-1);
+    printf("  effect bus level          %d of %d\n",
+           Mix_Volume(0, -1), MIX_MAX_VOLUME);
+    printf("  music level               %d of %d\n",
+           Mix_VolumeMusic(-1), MIX_MAX_VOLUME);
     printf("  channels allocated        %d\n", AUDIO_CHANNELS);
     printf("  starts accepted           %d of %d attempted\n",
            started, AUDIO_CHANNELS + 4);

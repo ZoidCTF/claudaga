@@ -79,6 +79,22 @@ bool gfx_screenshot(Gfx *g, const char *path)
     return ok;
 }
 
+void gfx_set_fullscreen(Gfx *g, bool on)
+{
+    if (!g->window) return;
+    if (SDL_SetWindowFullscreen(g->window,
+                                on ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) < 0) {
+        SDL_Log("could not go %s: %s", on ? "fullscreen" : "windowed",
+                SDL_GetError());
+    }
+}
+
+bool gfx_is_fullscreen(const Gfx *g)
+{
+    if (!g->window) return false;
+    return (SDL_GetWindowFlags(g->window) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
+}
+
 void gfx_begin_frame(Gfx *g)
 {
     SDL_SetRenderDrawColor(g->renderer, 0, 0, 0, 255);
