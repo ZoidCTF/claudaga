@@ -18,6 +18,11 @@
    shared rather than living in whichever module happens to draw the ship. */
 #define PLAYER_Y (GAME_H - 24)
 
+/* How fast the fighter moves, in pixels per tick. Shared because the rules
+   that decide when an enemy may fire are written in terms of how far the
+   player could get out of the way in the time a missile takes to arrive. */
+#define PLAYER_SPEED 1.6f
+
 typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;

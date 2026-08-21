@@ -329,7 +329,17 @@ static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
 
 #define FIRE_CHANCE_IN    150     /* per diving enemy, per tick, stage 1 */
 #define FIRE_CHANCE_IN_END 68     /* and at the far end of the ramp      */
-#define FIRE_MIN_HEIGHT   44.0f   /* must be this far above the fighter's row */
+/* The least warning a missile is allowed to give, in ticks, and the height
+   that works out to.
+ *
+ * Writing the height directly was the mistake: 44 pixels sounds like clearance
+ * and is not. A shot covers ENEMY_SHOT_SPEED pixels a tick, so 44 of them is
+ * nineteen ticks - under a third of a second - between a missile appearing and
+ * arriving, which is roughly a person's reaction time and leaves nothing for
+ * moving afterwards. The number that matters is the time, so the time is what
+ * is written and the height is derived from it. */
+#define FIRE_MIN_WARNING  28.0f
+#define FIRE_MIN_HEIGHT   (ENEMY_SHOT_SPEED * FIRE_MIN_WARNING)
 #define FIRE_MAX_SLOPE    1.0f    /* |dx| <= dy: 45 degrees from straight down */
 
 static bool is_boss(ShapeId s);
@@ -1282,7 +1292,13 @@ static void send_home(Wave *w, Enemy *e)
 
 void wave_recall(Wave *w)
 {
+    wave_recall_except(w, -1);
+}
+
+void wave_recall_except(Wave *w, int keep)
+{
     for (int i = 0; i < MAX_ENEMIES; ++i) {
+        if (i == keep) continue;
         Enemy *e = &w->enemies[i];
         if (e->state == ENEMY_DIVING) send_home(w, e);
 
@@ -1602,6 +1618,15 @@ void wave_print_stats(const Wave *w)
            w->shots_fired, w->shots_on_entry);
     printf("steepest missile fired: %.1f deg off straight down (90 = undodgeable)\n",
            w->shot_max_deg);
+    {
+        /* Worst case is a shot fired from the minimum height, straight down:
+           the shortest possible flight, and the one the fighter has least time
+           to escape. It has to move clear of the missile's radius. */
+        float ticks = FIRE_MIN_HEIGHT / ENEMY_SHOT_SPEED;
+        printf("  the shortest warning a missile can give is %.0f ticks "
+               "(%.2fs), in which the fighter can move %.0f px\n",
+               ticks, ticks / 60.0f, ticks * PLAYER_SPEED);
+    }
 
     int total = w->dives_boss + w->dives_butterfly + w->dives_bee;
     if (total == 0) { printf("no dives yet\n"); return; }

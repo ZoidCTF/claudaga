@@ -13,7 +13,6 @@ static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color RED    = { 255,  72,  72, 255 };
 static const SDL_Color DIM    = { 150, 150, 168, 255 };
 
-#define PLAYER_SPEED    1.6f
 #define SHOT_SPEED      4.0f
 #define FIRE_COOLDOWN   12
 #define RESPAWN_TICKS   70
@@ -326,10 +325,18 @@ static void start_capture(Game *g, int boss)
     g->player.cap_spin = 0.0f;
     g->player.cap_boss = boss;
 
+    wave_recall_except(&g->wave, boss);
+
     if (g->trace) printf("tick %d: fighter captured by enemy %d\n", g->tick, boss);
 
-    /* A capture costs a fighter exactly as a death does, but there is no wreck
-       and the wave is not cleared - the boss is in the middle of something.
+    /* The board is emptied exactly as a death empties it, except for the boss
+       doing the capturing - it is carrying the fighter and has its own way
+       home. Without this a diver already on its way down kept coming while the
+       fighter was being drawn up the beam, and was sitting over the spawn point
+       shooting when the replacement arrived: a death from something that was
+       launched while the player did not exist.
+
+       A capture costs a fighter exactly as a death does, but there is no wreck.
 
        --observe still lets the capture happen and only skips the cost. Blocking
        it outright meant the whole capture-and-rescue chain could not be watched
@@ -780,6 +787,13 @@ void game_update(Game *g, const Input *in)
             && wave_area_clear(&g->wave, spot, SPAWN_CLEAR_RADIUS)) {
             g->player.alive = true;
             g->player.x     = spot.x;
+
+            /* Attacks wait for the formation to be whole again, the same way
+               they do after a hand-over. The board was recalled when the
+               fighter was lost, so this is the difference between arriving to
+               an empty sky and arriving under whatever was still on its way
+               home. */
+            wave_rearm_attacks(&g->wave);
             if (g->trace) {
                 printf("tick %d: fighter back on the line, %d ticks after it went\n",
                        g->tick, g->tick - g->gone_tick);

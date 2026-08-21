@@ -347,6 +347,10 @@ Vec2 wave_enemy_pos(const Wave *w, int index);
    lose the next life immediately. */
 void wave_recall(Wave *w);
 
+/* As above but leaves one enemy alone, for the boss in the middle of a capture:
+   it is carrying the fighter and has its own way home. */
+void wave_recall_except(Wave *w, int keep);
+
 /* While paused no new attack launches. Anything already flying carries on, so
    the screen drains rather than freezing. */
 void wave_pause_attacks(Wave *w, bool paused);
