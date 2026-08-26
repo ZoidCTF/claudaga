@@ -636,7 +636,7 @@ static void usage(void)
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "                [--stage N] [--mute] [--padtest] [--options]\n"
             "                [--audiotest [DIR]] [--paused] [--divedump] [--demo]\n"
-            "                [--players 1|2] [--seed N] [--dual]\n"
+            "                [--players 1|2] [--seed N] [--dual] [--chaltrack]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
