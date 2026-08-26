@@ -858,6 +858,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--seed")    && i + 1 < argc)  wave_set_seed((unsigned)atoi(argv[++i]));
         else if (!strcmp(argv[i], "--stage")   && i + 1 < argc)  first_stage = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--dual"))                     always_dual = true;
+        else if (!strcmp(argv[i], "--chaltrack"))                wave_track_challenge(true);
         else if (!strcmp(argv[i], "--paths"))                    paths = true;
         else if (!strcmp(argv[i], "--observe"))                  observe = true;
         else if (!strcmp(argv[i], "--autofire"))                 autofire = true;

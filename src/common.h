@@ -23,6 +23,11 @@
    player could get out of the way in the time a missile takes to arrive. */
 #define PLAYER_SPEED 1.6f
 
+/* Ticks between shots. Shared because a wave that sends enemies past faster
+   than this cannot be cleared however well it is played, so the schedules are
+   written against it rather than beside it. */
+#define FIRE_COOLDOWN 12
+
 typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;

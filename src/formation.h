@@ -254,7 +254,11 @@ void wave_init(Wave *w);
    taken over one seed is a sample, not a number, and several of the wave
    figures are worst-of over a run, which is the kind of statistic that swings
    hardest. Tuning against a single seed means tuning against luck. */
-void wave_set_seed(unsigned base);       /* builds paths and slots; call once */
+void wave_set_seed(unsigned base);
+
+/* Dumps every bonus-round flyer's position each tick, for working out off-line
+   whether a round can actually be cleared. */
+void wave_track_challenge(bool on);       /* builds paths and slots; call once */
 
 /* Sends everyone back off-screen to fly in again. `stage` is the stage number
    the wave is about to be, which is what sets the difficulty: the same forty

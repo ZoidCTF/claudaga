@@ -724,7 +724,10 @@ static void dive_path_release(Wave *w, int i)
 
 /* ----------------------------------------------------------------- setup */
 
-static u32 wave_seed_base = 0;
+static u32  wave_seed_base = 0;
+static bool wave_track = false;
+
+void wave_track_challenge(bool on) { wave_track = on; }
 
 void wave_set_seed(unsigned base) { wave_seed_base = (u32)base; }
 
@@ -910,6 +913,14 @@ typedef struct {
     float    speed;      /* multiple of the entry speed                          */
 } ChallengeRound;
 
+/* within_gap has a floor, and it is not a matter of taste: the gun fires once
+   every FIRE_COOLDOWN ticks and the five flyers of a group arrive one behind
+   the other, so a group spaced tighter than that arrives faster than it can be
+   shot at. The shooting still works out over a whole pair - there is a long
+   tail after the last one lands - but in the moment you are always behind,
+   which is what made the fourth round feel impossible rather than hard. */
+#define CHAL_MIN_GAP FIRE_COOLDOWN
+
 /* The four lanes a round flies, in the order its groups take them. */
 static const ChalLane *chal_lanes(int variant);
 
@@ -922,7 +933,7 @@ static const ChallengeRound CHAL_ROUNDS[SHP_BONUS_COUNT] = {
 
     /* Four columns, alternating shapes. */
     { { { PATH_CHAL_E_L, -66.0f }, { PATH_CHAL_F_L, -21.0f },
-        { PATH_CHAL_E_L,  24.0f }, { PATH_CHAL_F_L,  67.0f } }, 48, 10, 1.25f },
+        { PATH_CHAL_E_L,  24.0f }, { PATH_CHAL_F_L,  67.0f } }, 48, 13, 1.25f },
 
     /* Two columns close together on the left and two spread right, so the
        halves of the round want different footwork. */
@@ -932,7 +943,7 @@ static const ChallengeRound CHAL_ROUNDS[SHP_BONUS_COUNT] = {
     /* One sweep still crossing the screen, to keep a round that cannot be
        stood out entirely, with three columns around it. */
     { { { PATH_CHAL_E_L, -58.0f }, { PATH_CHAL_C_L,   0.0f },
-        { PATH_CHAL_F_L,  32.0f }, { PATH_CHAL_E_L,  70.0f } }, 42,  9, 1.35f },
+        { PATH_CHAL_F_L,  32.0f }, { PATH_CHAL_E_L,  70.0f } }, 42, 14, 1.15f },
 };
 
 static const ChalLane *chal_lanes(int variant)
@@ -1582,6 +1593,7 @@ void wave_update(Wave *w, float player_x)
                 e->state   = ENEMY_ENTERING;
                 e->s       = 0.0f;
                 e->pos     = path_point(p, 0.0f);
+                e->pos.x  += e->lane_dx;   /* same shift the rest of the lane gets */
                 e->heading = path_heading(p, 0.0f);
             }
             break;
@@ -1742,6 +1754,15 @@ void wave_update(Wave *w, float player_x)
     track_convoys(w);
     if (w->challenge) track_challenge(w);
 
+    if (wave_track && w->challenge) {
+        for (int i = 0; i < MAX_ENEMIES; ++i) {
+            const Enemy *e = &w->enemies[i];
+            if (e->state != ENEMY_ENTERING) continue;
+            printf("F %d %d %d %.2f %.2f\n", w->tick, i, i / CHAL_GROUP,
+                   e->pos.x, e->pos.y);
+        }
+    }
+
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         const Enemy *e = &w->enemies[i];
         if (e->state != ENEMY_FORMED) continue;
@@ -1798,6 +1819,13 @@ void wave_print_stats(const Wave *w)
                w->chal_peak_groups, w->chal_peak_flyers);
         printf("  longest empty screen between pairs: %d ticks (%.2fs)\n",
                w->chal_quiet, w->chal_quiet / 60.0f);
+        {
+            int gap = CHAL_ROUNDS[w->chal_variant].within_gap;
+            printf("  flyers arrive every %d ticks, the gun cycles every %d%s\n",
+                   gap, FIRE_COOLDOWN,
+                   gap < CHAL_MIN_GAP ? "  <-- arriving faster than it can fire"
+                                      : "");
+        }
         {
             int   mid  = 0;
             float at   = 0.0f;

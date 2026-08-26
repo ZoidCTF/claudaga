@@ -14,7 +14,6 @@ static const SDL_Color RED    = { 255,  72,  72, 255 };
 static const SDL_Color DIM    = { 150, 150, 168, 255 };
 
 #define SHOT_SPEED      4.0f
-#define FIRE_COOLDOWN   12
 #define RESPAWN_TICKS   70
 
 /* How much room the fighter needs before it will come back. The recall sends
