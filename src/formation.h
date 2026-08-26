@@ -263,6 +263,7 @@ typedef struct {
     bool  attacks_paused;    /* transient, while the player is not there */
 } Wave;
 
+/* Builds paths and slots; call once. */
 void wave_init(Wave *w);
 
 /* Shifts the seed every wave starts from. For the measuring harness: a metric
@@ -273,7 +274,7 @@ void wave_set_seed(unsigned base);
 
 /* Dumps every bonus-round flyer's position each tick, for working out off-line
    whether a round can actually be cleared. */
-void wave_track_challenge(bool on);       /* builds paths and slots; call once */
+void wave_track_challenge(bool on);
 
 /* Sends everyone back off-screen to fly in again. `stage` is the stage number
    the wave is about to be, which is what sets the difficulty: the same forty

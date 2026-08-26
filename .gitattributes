@@ -8,3 +8,9 @@
 # Never touch the artwork or captured frames.
 *.png binary
 *.bmp binary
+
+# Icon and audio must never be CRLF-normalised.
+*.ico binary
+*.wav binary
+*.ogg binary
+*.mp3 binary

@@ -901,7 +901,7 @@ int main(int argc, char **argv)
 
     if (padtest) {
         if (SDL_Init(SDL_INIT_EVENTS) < 0) {
-            fprintf(stderr, "SDL would not start: %s' + BS + 'n", SDL_GetError());
+            fprintf(stderr, "SDL would not start: %s\n", SDL_GetError());
             return 2;
         }
         int bad = input_selftest();
