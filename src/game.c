@@ -243,6 +243,31 @@ static bool is_challenge_stage(int stage)
     return stage >= 3 && ((stage - 3) % 4) == 0;
 }
 
+/* The music belongs to the stage, not to the moment a stage begins.
+ *
+ * It used to be started only from start_stage, as one more thing that happens
+ * when a wave is handed out - and every route that arrives at a stage without
+ * starting one arrived in silence. Three of them: --stage set a bonus round up
+ * through a restart that is deliberately quiet, so the jingle would not play,
+ * which took the music with it; the view transition into play could not fire on
+ * the first frame, because it compares against a `shown` that starts equal to
+ * the view; and a two-player hand-over resumes a board rather than starting a
+ * stage, so a seat waiting on a bonus round came back to nothing.
+ *
+ * Asserting the state rather than firing an event fixes all three at once, and
+ * the next route in will not need remembering either. */
+bool game_stage_music(const Game *g)
+{
+    /* Not once the round is over: the payout stops the music deliberately, and
+       the stage number does not change until the next one starts. */
+    if (is_challenge_stage(g->stage) && g->stage_clear == 0 && !g->finished) {
+        audio_music(MUSIC_BONUS);
+        return true;
+    }
+    audio_music_stop();
+    return false;
+}
+
 /* How many challenging stages come before this one. Used to count the ordinary
    stages, which is what picks the entry the wave flies in on - a bonus round
    flies no entry, so counting it would waste a set. */

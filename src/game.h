@@ -166,6 +166,13 @@ bool game_turn_settled(const Game *g);
    board has been packed away, so the numbers land on an empty sky rather than
    over a formation that is still standing there. */
 void game_show_results(Game *g);
+
+/* Makes the music match the stage this game is sitting on, whatever was
+   playing before. Idempotent, and safe to call from anywhere that changes
+   which game or which stage is on screen. Returns whether the stage wanted
+   music, which is the decision a headless run can check - it opens no device,
+   so the mixer has nothing to report. */
+bool game_stage_music(const Game *g);
 void game_draw(Gfx *gfx, const Game *g);
 
 #endif /* CLAUDAGA_GAME_H */

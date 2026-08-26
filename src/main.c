@@ -163,6 +163,10 @@ static void session_hand_to(Session *s, int next)
        to finish arriving before anything comes out of it. */
     wave_rearm_attacks(&g->wave);
 
+    /* The incoming seat may be sitting on a bonus round, which this is not
+       starting - only resuming. */
+    game_stage_music(g);
+
     s->phase = TURN_ARRIVING;
     session_log(s, "gone - next board announced");
 }
@@ -745,7 +749,8 @@ static void ui_confirm(Ui *u)
     if (u->menu_sel == MENU_ONE || u->menu_sel == MENU_TWO) {
         session_begin(u->sess, u->menu_sel == MENU_ONE ? 1 : 2);
         u->view = VIEW_PLAY;
-        audio_music_stop();
+        /* The music is settled by the transition below, which owns it for
+           every way into play rather than just this one. */
     } else if (u->menu_sel == MENU_OPTIONS) {
         u->options = true;
     } else {
@@ -1029,7 +1034,11 @@ int main(int argc, char **argv)
     double accum = 0.0;
 
     int  tick      = 0;
-    View shown     = ui.view;
+    /* Deliberately a value no view has, so the first frame counts as a
+       transition. Starting it at ui.view meant a run that opens straight into
+       play - --scene, or the headless harness - never ran the transition at
+       all, and settled nothing. */
+    View shown     = VIEW_COUNT;
 
     while (ui.running) {
         SDL_Event ev;
@@ -1125,8 +1134,13 @@ int main(int argc, char **argv)
            it on the transition rather than at the menu covers Tab as well,
            which can drop straight into play from a shape tool. */
         if (ui.view != shown) {
-            if (ui.view == VIEW_PLAY) audio_music_stop();
+            bool want = false;
+            if (ui.view == VIEW_PLAY) want = game_stage_music(&games[session.turn]);
             shown = ui.view;
+            if (trace) {
+                printf("tick %d: entering view %d, stage music %s\n",
+                       session.tick, ui.view, want ? "wanted" : "none");
+            }
         }
 
         Uint64 now = SDL_GetPerformanceCounter();
