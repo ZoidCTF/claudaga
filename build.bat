@@ -40,12 +40,25 @@ set "LIBS="%SDL%\lib\x64\SDL2.lib" "%SDL%\lib\x64\SDL2main.lib" "%MIX%\lib\x64\S
 
 echo [build] configuration: %CONFIG%
 
+rem The icon is compiled in as a resource. Not an error when it is missing: the
+rem .ico is produced by the game itself with --icon, so a tree that has never
+rem built one still has to be able to build one.
+set "RES="
+if exist "%ROOT%res\claudaga.rc" if exist "%ROOT%res\claudaga.ico" (
+    rc /nologo /fo "%ROOT%build\claudaga.res" "%ROOT%res\claudaga.rc" >nul
+    if errorlevel 1 (
+        echo [build] ERROR: could not compile res\claudaga.rc
+        exit /b 1
+    )
+    set "RES="%ROOT%build\claudaga.res""
+)
+
 rem The compiler output goes to a log as well as the console so the tail of the
 rem build can report a warning count. Warnings scroll past too easily otherwise,
 rem and a build that says only "OK" reads as clean when it is not. Redirecting
 rem rather than piping keeps cl's exit code intact.
 set "LOG=%ROOT%build\build.log"
-cl !CFLAGS! /Fo"%ROOT%build\\" /Fd"%ROOT%build\claudaga.pdb" "%ROOT%src\*.c" /link /DEBUG /SUBSYSTEM:!SUBSYS! /OUT:"%ROOT%build\claudaga.exe" !LIBS! > "%LOG%" 2>&1
+cl !CFLAGS! /Fo"%ROOT%build\\" /Fd"%ROOT%build\claudaga.pdb" "%ROOT%src\*.c" /link /DEBUG /SUBSYSTEM:!SUBSYS! /OUT:"%ROOT%build\claudaga.exe" !LIBS! !RES! > "%LOG%" 2>&1
 set CLERR=%errorlevel%
 type "%LOG%"
 

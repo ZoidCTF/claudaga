@@ -16,6 +16,7 @@
 #include "audio.h"
 #include "input.h"
 #include "settings.h"
+#include "icon.h"
 
 /* A headless fast-forward starts a fresh game rather than stopping on the
    menu. Flip this to exercise the interactive path through --at. */
@@ -637,6 +638,7 @@ static void usage(void)
             "                [--stage N] [--mute] [--padtest] [--options]\n"
             "                [--audiotest [DIR]] [--paused] [--divedump] [--demo]\n"
             "                [--players 1|2] [--seed N] [--dual] [--chaltrack]\n"
+            "                [--icon out.ico]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -822,6 +824,7 @@ static void ui_next_view(Ui *u)
 int main(int argc, char **argv)
 {
     const char *shot_path = NULL;
+    const char *icon_path = NULL;
     Ui          ui        = { VIEW_TITLE, MENU_ONE, false, true, 0,
                               OPT_SFX, false, 0, 0, VIEW_TITLE, NULL, NULL };
     Settings    settings;
@@ -859,6 +862,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--stage")   && i + 1 < argc)  first_stage = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--dual"))                     always_dual = true;
         else if (!strcmp(argv[i], "--chaltrack"))                wave_track_challenge(true);
+        else if (!strcmp(argv[i], "--icon")    && i + 1 < argc)  icon_path = argv[++i];
         else if (!strcmp(argv[i], "--paths"))                    paths = true;
         else if (!strcmp(argv[i], "--observe"))                  observe = true;
         else if (!strcmp(argv[i], "--autofire"))                 autofire = true;
@@ -907,6 +911,25 @@ int main(int argc, char **argv)
 
     Gfx g;
     if (!gfx_init(&g, "Claudaga", scale)) return 1;
+
+    /* Writing the icon needs a renderer and nothing else, so it happens here
+       and the process stops. It is a build step, not a mode of the game. */
+    if (icon_path) {
+        bool ok = icon_write(&g, icon_path);
+        gfx_shutdown(&g);
+        return ok ? 0 : 1;
+    }
+
+    /* The taskbar and alt-tab read the window's icon, not the executable's, so
+       the same drawing is handed to SDL as well. Drawn rather than loaded, so
+       there is no file to ship and nothing to fall out of step with the .ico. */
+    {
+        SDL_Surface *ico = icon_render(&g, 64);
+        if (ico) {
+            SDL_SetWindowIcon(g.window, ico);
+            SDL_FreeSurface(ico);
+        }
+    }
 
     /* A headless run mutes itself. Opening a device to render one screenshot
        is pointless, and a --stats run would fire thousands of effects at a

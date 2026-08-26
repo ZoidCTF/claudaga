@@ -101,8 +101,10 @@ src/
   audio.*       SDL_mixer: effects, music, and the tools that measure them
   input.*       keyboard and controllers, merged into three booleans
   settings.*    volumes and fullscreen, persisted
+  icon.*        the application icon, drawn from the fighter's polygons
   main.c        the loop, the views, and the two-player session
 assets/audio/   sound and music, all CC0
+res/            the application icon and its resource script
 third_party/    SDL2 and SDL2_mixer - fetched, not committed
 tools/          dependency, package, and installer definitions
 ```
@@ -126,7 +128,9 @@ virtual controller through the input layer and checks what comes out,
 `--audiotest` measures every sound, and `--divedump` prints each attack curve as
 a polyline, and `--chaltrack` dumps every bonus-round flyer's position each
 tick for working out off-line whether a round can be cleared. `--stage N`, `--players N`, `--dual`, `--autofire`, `--observe`, `--mute`
-and `--seed N` set a run up; several of the wave figures are worst-of over a
+and `--seed N` set a run up; `--icon out.ico` regenerates the application
+icon from the fighter's own polygons, which is only needed when that artwork
+changes; several of the wave figures are worst-of over a
 run, so they want sampling across seeds rather than reading once.
 `claudaga --help` lists the lot.
 

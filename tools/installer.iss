@@ -27,6 +27,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
 OutputBaseFilename=claudaga-{#MyAppVersion}-setup
+; The same icon the executable carries, so the installer, the Start menu entry
+; and Add/Remove Programs all show it rather than the generic one.
+SetupIconFile=..\res\claudaga.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
