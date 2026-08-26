@@ -43,6 +43,7 @@ typedef struct {
     int        launch_tick;
     float      s;            /* distance travelled along the path */
     float      speed;
+    float      lane_dx;   /* lateral offset of this flyer's lane, bonus rounds */
     Vec2       pos;
     float      heading;
 
@@ -103,6 +104,8 @@ typedef enum {
     PATH_CHAL_B_L,   PATH_CHAL_B_R,
     PATH_CHAL_C_L,   PATH_CHAL_C_R,
     PATH_CHAL_D_L,   PATH_CHAL_D_R,
+    PATH_CHAL_E_L,   PATH_CHAL_E_R,
+    PATH_CHAL_F_L,   PATH_CHAL_F_R,
     PATH_COUNT
 } PathId;
 
@@ -164,6 +167,7 @@ typedef struct {
        never attacks and never fires, and anything not shot simply escapes. */
     bool  challenge;
     int   challenge_hits;
+    int   chal_variant;      /* which of the four patterns this round is  */
     int   chal_peak_groups;  /* most groups on screen at once, this round   */
     int   chal_peak_flyers;  /* and most individual flyers                  */
     int   chal_quiet;        /* longest stretch with an empty screen        */
@@ -270,6 +274,19 @@ void wave_restart(Wave *w, int stage, int entry);
 void wave_restart_challenge(Wave *w, int stage, int variant);
 
 bool wave_is_challenge(const Wave *w);
+
+/* Whether a bonus round can be beaten without moving.
+ *
+ * A bonus round is a pattern, and the thing worth knowing about a pattern is
+ * where to stand for it. If one column reaches every group there is nothing to
+ * know - park in the middle and hold the trigger - which is what a round made
+ * of mirrored pairs allows by construction.
+ *
+ * Counted per group, not per flyer: the five flyers of a group fly one lane
+ * spaced out in time, so a column that reaches the lane reaches all five.
+ * Returns the most groups any single column reaches, of 8. */
+int wave_challenge_coverage(const Wave *w, int variant, float *best_x,
+                            int *at_centre, bool dual);
 int  wave_challenge_hits(const Wave *w);
 
 /* What a bonus round pays: per flyer caught, and for catching all of them. */

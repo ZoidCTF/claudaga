@@ -115,6 +115,35 @@ static const Vec2 CTRL_CHAL_C[] = {
    wider swing the other way, then out of the bottom. Two turns in opposite
    directions mean a flyer on this pass crosses its own column twice, so a
    shot led into the first turn can be waited out for the second. */
+/* The later rounds' shapes, and the point of them: they stay in a column.
+ *
+ * A, B, C and D all cross the whole screen, which is what made every bonus
+ * round beatable from the middle - whatever a lane does, it does some of it
+ * overhead, so anywhere is as good as anywhere. These two sweep about fifty
+ * pixels, so where a flyer can be shot is a place rather than everywhere, and
+ * a round built from several of them at different columns has to be learnt.
+ *
+ * Authored around the middle of the screen and moved sideways per lane, which
+ * is also why the later rounds no longer use mirrors: reflecting a pair puts it
+ * back either side of centre, and a fighter parked between them covers both.
+ * Translating does not. */
+
+/* Down the screen, one tight loop, and out of the bottom. */
+static const Vec2 CTRL_CHAL_E[] = {
+    { 112, -30 }, { 112,  26 }, { 110,  74 }, { 114, 118 },
+    { 132, 148 }, { 126, 178 }, {  98, 184 }, {  86, 158 },
+    { 100, 134 }, { 124, 140 }, { 130, 176 }, { 120, 224 },
+    { 112, 276 }, { 108, 340 },
+};
+
+/* Down, a hook across the low band, and back out of the top - two passes over
+   the same column for a fighter that knows to be under it. */
+static const Vec2 CTRL_CHAL_F[] = {
+    { 112, -30 }, { 118,  36 }, { 128,  92 }, { 126, 140 },
+    { 108, 172 }, {  84, 158 }, {  78, 122 }, {  92,  92 },
+    { 104,  54 }, { 100,  -8 }, {  96, -40 },
+};
+
 static const Vec2 CTRL_CHAL_D[] = {
     { 112, -30 }, {  96,  24 }, {  56,  52 }, {  46,  96 },
     {  86, 116 }, { 120,  92 }, { 146, 124 }, { 174, 166 },
@@ -711,6 +740,8 @@ void wave_init(Wave *w)
     path_build(&w->paths[PATH_CHAL_B_L],   CTRL_CHAL_B,   ARRAY_COUNT(CTRL_CHAL_B));
     path_build(&w->paths[PATH_CHAL_C_L],   CTRL_CHAL_C,   ARRAY_COUNT(CTRL_CHAL_C));
     path_build(&w->paths[PATH_CHAL_D_L],   CTRL_CHAL_D,   ARRAY_COUNT(CTRL_CHAL_D));
+    path_build(&w->paths[PATH_CHAL_E_L],   CTRL_CHAL_E,   ARRAY_COUNT(CTRL_CHAL_E));
+    path_build(&w->paths[PATH_CHAL_F_L],   CTRL_CHAL_F,   ARRAY_COUNT(CTRL_CHAL_F));
     path_mirror(&w->paths[PATH_TOP_DIVE_R], &w->paths[PATH_TOP_DIVE_L]);
     path_mirror(&w->paths[PATH_SWEEP_R],    &w->paths[PATH_SWEEP_L]);
     path_mirror(&w->paths[PATH_RETURN_R],   &w->paths[PATH_RETURN_L]);
@@ -719,6 +750,8 @@ void wave_init(Wave *w)
     path_mirror(&w->paths[PATH_CHAL_B_R],   &w->paths[PATH_CHAL_B_L]);
     path_mirror(&w->paths[PATH_CHAL_C_R],   &w->paths[PATH_CHAL_C_L]);
     path_mirror(&w->paths[PATH_CHAL_D_R],   &w->paths[PATH_CHAL_D_L]);
+    path_mirror(&w->paths[PATH_CHAL_E_R],   &w->paths[PATH_CHAL_E_L]);
+    path_mirror(&w->paths[PATH_CHAL_F_R],   &w->paths[PATH_CHAL_F_L]);
 
     w->show_paths      = false;
     w->attacks_enabled = true;
@@ -826,6 +859,7 @@ static void wave_reset_common(Wave *w)
         e->s           = 0.0f;
         e->speed       = ENTRY_SPEED;
         e->pos         = w->paths[e->path].pt[0];
+        e->pos.x      += e->lane_dx;
         e->heading     = HEADING_S;
         e->join_t      = 0.0f;
         e->join_rate   = 0.0f;
@@ -865,18 +899,93 @@ void wave_restart(Wave *w, int stage, int entry)
    through the middle. Pairing them differently each time means no two rounds
    present the same problem even where they share a pass. */
 typedef struct {
-    PathId lane_a, lane_b;
-    int    pair_pause;   /* empty screen between one pair of groups and the next */
-    int    within_gap;   /* ticks between flyers inside a group                  */
-    float  speed;        /* multiple of the entry speed                          */
+    PathId lane;
+    float  dx;           /* moved sideways from where the shape was authored */
+} ChalLane;
+
+typedef struct {
+    ChalLane lanes[4];   /* the four lanes, in the order the groups take them */
+    int      pair_pause; /* empty screen between one pair of groups and the next */
+    int      within_gap; /* ticks between flyers inside a group                  */
+    float    speed;      /* multiple of the entry speed                          */
 } ChallengeRound;
 
+/* The four lanes a round flies, in the order its groups take them. */
+static const ChalLane *chal_lanes(int variant);
+
 static const ChallengeRound CHAL_ROUNDS[SHP_BONUS_COUNT] = {
-    { PATH_CHAL_A_L, PATH_CHAL_B_L, 54, 13, 1.15f },
-    { PATH_CHAL_C_L, PATH_CHAL_D_L, 48, 10, 1.25f },
-    { PATH_CHAL_B_L, PATH_CHAL_C_L, 60, 15, 1.05f },
-    { PATH_CHAL_D_L, PATH_CHAL_A_L, 42,  9, 1.35f },
+    /* The first stays as it was: mirrored sweeps across the whole screen, and
+       beatable from the middle. It is the one that teaches what a bonus round
+       is, and the introduction is not the place to hide the lesson. */
+    { { { PATH_CHAL_A_L,   0.0f }, { PATH_CHAL_A_R,   0.0f },
+        { PATH_CHAL_B_L,   0.0f }, { PATH_CHAL_B_R,   0.0f } }, 54, 13, 1.15f },
+
+    /* Four columns, alternating shapes. */
+    { { { PATH_CHAL_E_L, -66.0f }, { PATH_CHAL_F_L, -21.0f },
+        { PATH_CHAL_E_L,  24.0f }, { PATH_CHAL_F_L,  67.0f } }, 48, 10, 1.25f },
+
+    /* Two columns close together on the left and two spread right, so the
+       halves of the round want different footwork. */
+    { { { PATH_CHAL_F_L, -70.0f }, { PATH_CHAL_F_L, -34.0f },
+        { PATH_CHAL_E_L,  26.0f }, { PATH_CHAL_E_L,  74.0f } }, 60, 15, 1.05f },
+
+    /* One sweep still crossing the screen, to keep a round that cannot be
+       stood out entirely, with three columns around it. */
+    { { { PATH_CHAL_E_L, -58.0f }, { PATH_CHAL_C_L,   0.0f },
+        { PATH_CHAL_F_L,  32.0f }, { PATH_CHAL_E_L,  70.0f } }, 42,  9, 1.35f },
 };
+
+static const ChalLane *chal_lanes(int variant)
+{
+    int r = ((variant % SHP_BONUS_COUNT) + SHP_BONUS_COUNT) % SHP_BONUS_COUNT;
+    return CHAL_ROUNDS[r].lanes;
+}
+
+/* How far either side of a column a shot still kills, and the band of the
+   screen a shot can realistically reach something in. */
+#define SHOT_REACH  10.0f
+#define SHOOT_TOP   60.0f
+
+/* The leftmost column a fighter can stand in. It is stopped by its own width,
+   and a paired one is twice as wide - so the outer sixteen pixels are not
+   somewhere the answer is allowed to be. Scanning from the screen edge instead
+   had round 4 answering x=8, which no paired fighter can reach. */
+#define REACH_EDGE(dual)  (CELL / 2.0f + ((dual) ? 8.0f : 0.0f))
+
+static bool lane_reaches(const Wave *w, ChalLane lane, float x, bool dual)
+{
+    const Path *p = &w->paths[lane.lane];
+    for (int i = 0; i < p->n; ++i) {
+        if (p->pt[i].y < SHOOT_TOP || p->pt[i].y > (float)PLAYER_Y) continue;
+        float d = fabsf(p->pt[i].x + lane.dx - x);
+        if (d <= SHOT_REACH) return true;
+        /* A paired fighter fires from two hulls 8px either side of centre. */
+        if (dual && fabsf(d - 8.0f) <= SHOT_REACH) return true;
+    }
+    return false;
+}
+
+int wave_challenge_coverage(const Wave *w, int variant, float *best_x,
+                            int *at_centre, bool dual)
+{
+    const ChalLane *lanes = chal_lanes(variant);
+
+    int best = 0;
+    float at = GAME_W * 0.5f;
+
+    float edge = REACH_EDGE(dual);
+    for (float x = edge; x <= GAME_W - edge; x += 2.0f) {
+        int covered = 0;
+        for (int g = 0; g < MAX_ENEMIES / CHAL_GROUP; ++g) {
+            if (lane_reaches(w, lanes[g % 4], x, dual)) ++covered;
+        }
+        if (covered > best) { best = covered; at = x; }
+        if (at_centre && fabsf(x - GAME_W * 0.5f) < 1.0f) *at_centre = covered;
+    }
+
+    if (best_x) *best_x = at;
+    return best;
+}
 
 void wave_restart_challenge(Wave *w, int stage, int variant)
 {
@@ -888,6 +997,7 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
 
     if (variant < 0) variant = 0;
     int r = variant % SHP_BONUS_COUNT;
+    w->chal_variant = r;
     const ChallengeRound *round = &CHAL_ROUNDS[r];
 
     ShapeId shape = (ShapeId)(SHP_BONUS_FIRST + r);
@@ -902,12 +1012,7 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
     float speed = ENTRY_SPEED * round->speed * CHAL_SPEED_TRIM
                 * (1.0f + CHAL_SPEED_RAMP * t);
 
-    /* The round's two passes and both their mirrors, so the screen is crossed
-       from four directions rather than two. */
-    const PathId lanes[4] = {
-        round->lane_a, (PathId)(round->lane_a + 1),
-        round->lane_b, (PathId)(round->lane_b + 1),
-    };
+    const ChalLane *lanes = chal_lanes(variant);
 
     /* Eight groups of five, flown as four pairs: a lane and its mirror in the
        air together, and nothing else until both have left the screen.
@@ -927,7 +1032,7 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
     for (int g = 0; g < (int)ARRAY_COUNT(start); g += 2) {
         float longest = 0.0f;
         for (int k = 0; k < 2 && g + k < (int)ARRAY_COUNT(start); ++k) {
-            float len = w->paths[lanes[(g + k) % 4]].length;
+            float len = w->paths[lanes[(g + k) % 4].lane].length;
             if (len > longest) longest = len;
         }
         start[g] = at;
@@ -945,7 +1050,8 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
 
         e->shape       = shape;
         e->state       = ENEMY_WAITING;
-        e->path        = lanes[group % 4];
+        e->path        = lanes[group % 4].lane;
+        e->lane_dx     = lanes[group % 4].dx;
         e->launch_tick = start[group] + within * round->within_gap;
         e->speed       = speed;
         e->pos         = w->paths[e->path].pt[0];
@@ -1490,6 +1596,7 @@ void wave_update(Wave *w, float player_x)
                 else              begin_join(e, p);
             } else {
                 e->pos     = path_point(p, e->s);
+                e->pos.x  += e->lane_dx;
                 e->heading = path_heading(p, e->s);
 
                 /* From the second stage on the wave shoots on its way in, as
@@ -1691,6 +1798,72 @@ void wave_print_stats(const Wave *w)
                w->chal_peak_groups, w->chal_peak_flyers);
         printf("  longest empty screen between pairs: %d ticks (%.2fs)\n",
                w->chal_quiet, w->chal_quiet / 60.0f);
+        {
+            int   mid  = 0;
+            float at   = 0.0f;
+            int   best = wave_challenge_coverage(w, w->chal_variant, &at, &mid, true);
+            printf("  a paired fighter that never moves reaches %d of 8 groups "
+                   "from the middle, %d at best (x=%.0f)\n", mid, best, at);
+
+            /* A perfect pays 10,000, so it has to stay possible. Two lanes
+               fly at once and there is no time to cross the screen between
+               them, so each pair needs one column that reaches both - the
+               round asks you to know four spots, not to be in two places. */
+            {
+                const ChalLane *pl = chal_lanes(w->chal_variant);
+                for (int pair = 0; pair < 2; ++pair) {
+                    float lo = -1.0f, hi = -1.0f;
+                    float edge = REACH_EDGE(true);
+                    for (float x = edge; x <= GAME_W - edge; x += 2.0f) {
+                        if (lane_reaches(w, pl[pair * 2], x, true) &&
+                            lane_reaches(w, pl[pair * 2 + 1], x, true)) {
+                            if (lo < 0.0f) lo = x;
+                            hi = x;
+                        }
+                    }
+                    if (lo >= 0.0f) {
+                        printf("    pair %d: stand between x=%.0f and %.0f "
+                               "to reach both lanes\n", pair, lo, hi);
+                    } else {
+                        printf("    pair %d: NO column reaches both - "
+                               "a perfect is impossible\n", pair);
+                    }
+                }
+            }
+
+            const ChalLane *ll = chal_lanes(w->chal_variant);
+            for (int i = 0; i < 4; ++i) {
+                const Path *pp = &w->paths[ll[i].lane];
+                float lo = 1e9f, hi = -1e9f;
+                for (int k = 0; k < pp->n; ++k) {
+                    if (pp->pt[k].y < SHOOT_TOP || pp->pt[k].y > (float)PLAYER_Y)
+                        continue;
+                    if (pp->pt[k].x < lo) lo = pp->pt[k].x;
+                    if (pp->pt[k].x > hi) hi = pp->pt[k].x;
+                }
+                /* And how hard it turns. A flyer that doubles back reads as
+                   stopping dead, which is the fault the dive curves had twice
+                   and which reading control points did not catch either time. */
+                float worst = 0.0f;
+                for (int k = 2; k < pp->n; ++k) {
+                    float ax = pp->pt[k - 1].x - pp->pt[k - 2].x;
+                    float ay = pp->pt[k - 1].y - pp->pt[k - 2].y;
+                    float bx = pp->pt[k].x - pp->pt[k - 1].x;
+                    float by = pp->pt[k].y - pp->pt[k - 1].y;
+                    float la = sqrtf(ax * ax + ay * ay);
+                    float lb = sqrtf(bx * bx + by * by);
+                    if (la < 1e-4f || lb < 1e-4f) continue;
+                    float c = (ax * bx + ay * by) / (la * lb);
+                    if (c < -1.0f) c = -1.0f;
+                    if (c >  1.0f) c =  1.0f;
+                    float deg = acosf(c) * 180.0f / (float)M_PI;
+                    if (deg > worst) worst = deg;
+                }
+                printf("    lane %d sweeps x %.0f..%.0f (%.0f wide), "
+                       "sharpest turn %.0f deg\n",
+                       i, lo + ll[i].dx, hi + ll[i].dx, hi - lo, worst);
+            }
+        }
     } else {
         printf("entry set: %d of %d\n", w->entry_set, ENTRY_SETS);
     }
