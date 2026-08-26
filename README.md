@@ -134,6 +134,13 @@ changes; several of the wave figures are worst-of over a
 run, so they want sampling across seeds rather than reading once.
 `claudaga --help` lists the lot.
 
+## Licence
+
+The code is under the [zlib licence](LICENSE) - the same terms as SDL2 itself,
+so the whole stack travels under one licence family. The sound and music are
+other people's CC0 work, credited in [CREDITS.txt](assets/audio/CREDITS.txt);
+SDL2 and SDL2_mixer are fetched at build time under their own zlib licence.
+
 The commit history carries the reasoning behind most of what is here: why the
 paths are shaped as they are, which measurement caught which bug, and what was
 tried and reverted.
