@@ -242,19 +242,11 @@ static bool is_challenge_stage(int stage)
     return stage >= 3 && ((stage - 3) % 4) == 0;
 }
 
-/* The music belongs to the stage, not to the moment a stage begins.
- *
- * It used to be started only from start_stage, as one more thing that happens
- * when a wave is handed out - and every route that arrives at a stage without
- * starting one arrived in silence. Three of them: --stage set a bonus round up
- * through a restart that is deliberately quiet, so the jingle would not play,
- * which took the music with it; the view transition into play could not fire on
- * the first frame, because it compares against a `shown` that starts equal to
- * the view; and a two-player hand-over resumes a board rather than starting a
- * stage, so a seat waiting on a bonus round came back to nothing.
- *
- * Asserting the state rather than firing an event fixes all three at once, and
- * the next route in will not need remembering either. */
+/* The music belongs to the stage, not to the moment a stage begins. Started
+   only from start_stage, every route that reached a stage without starting one
+   arrived silent: --stage's deliberately quiet restart, the first frame of a
+   run that opens in play, and a two-player hand-over. Asserting the state
+   covers all three, and whatever route comes next. */
 bool game_stage_music(const Game *g)
 {
     /* Not once the round is over: the payout stops the music deliberately, and

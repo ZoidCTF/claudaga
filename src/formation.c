@@ -101,39 +101,11 @@ static const Vec2 CTRL_CHAL_B[] = {
     {  96,  16 }, { 132, -34 },
 };
 
-/* A lateral crossing: on from one side, a shallow serpentine straight across
-   the middle of the screen, off the other. The only pass that does not spend
-   most of its time travelling down the screen, which is what makes it read
-   differently from the rest - the flyers stay at a constant height and it is
-   the horizontal lead that has to be judged. */
-/* Not used by any round. C enters through the left edge already at the height
-   it will pass the fighter at, which leaves nothing to react to - a flyer that
-   is level with you the moment you first see it can only be met with shots
-   already in the air. Kept because it is authored and harmless unreferenced,
-   but do not put it back without giving it a top entry first. D is simply
-   spare: it comes in over the top and is fine, it just crosses too much of the
-   screen for the later rounds, which want columns. */
-static const Vec2 CTRL_CHAL_C[] = {
-    { -34, 110 }, {  26, 150 }, {  74, 112 }, { 126, 156 },
-    { 172, 118 }, { 214, 162 }, { 258, 124 },
-};
-
-/* A corkscrew: in at the top, a curl to one side, a cut back across into a
-   wider swing the other way, then out of the bottom. Two turns in opposite
-   directions mean a flyer on this pass crosses its own column twice, so a
-   shot led into the first turn can be waited out for the second. */
-/* The later rounds' shapes, and the point of them: they stay in a column.
- *
- * A, B, C and D all cross the whole screen, which is what made every bonus
- * round beatable from the middle - whatever a lane does, it does some of it
- * overhead, so anywhere is as good as anywhere. These two sweep about fifty
- * pixels, so where a flyer can be shot is a place rather than everywhere, and
- * a round built from several of them at different columns has to be learnt.
- *
- * Authored around the middle of the screen and moved sideways per lane, which
- * is also why the later rounds no longer use mirrors: reflecting a pair puts it
- * back either side of centre, and a fighter parked between them covers both.
- * Translating does not. */
+/* The later rounds' shapes. Unlike A and B they stay in a column, sweeping
+   about fifty pixels rather than the whole screen, so where a flyer can be shot
+   is a place rather than everywhere. Authored around the middle and moved
+   sideways per lane: the later rounds translate rather than mirror, because a
+   reflected pair sits either side of centre and one fighter covers both. */
 
 /* Down the screen, one tight loop, and out of the bottom. */
 static const Vec2 CTRL_CHAL_E[] = {
@@ -149,12 +121,6 @@ static const Vec2 CTRL_CHAL_F[] = {
     { 112, -30 }, { 118,  36 }, { 128,  92 }, { 126, 140 },
     { 108, 172 }, {  84, 158 }, {  78, 122 }, {  92,  92 },
     { 104,  54 }, { 100,  -8 }, {  96, -40 },
-};
-
-static const Vec2 CTRL_CHAL_D[] = {
-    { 112, -30 }, {  96,  24 }, {  56,  52 }, {  46,  96 },
-    {  86, 116 }, { 120,  92 }, { 146, 124 }, { 174, 166 },
-    { 138, 196 }, { 104, 226 }, { 118, 276 }, { 132, 330 },
 };
 
 /* A long diagonal from one top corner to the opposite low edge, a loop there,
@@ -748,8 +714,6 @@ void wave_init(Wave *w)
     path_build(&w->paths[PATH_CORNER_L],   CTRL_CORNER,   ARRAY_COUNT(CTRL_CORNER));
     path_build(&w->paths[PATH_CHAL_A_L],   CTRL_CHAL_A,   ARRAY_COUNT(CTRL_CHAL_A));
     path_build(&w->paths[PATH_CHAL_B_L],   CTRL_CHAL_B,   ARRAY_COUNT(CTRL_CHAL_B));
-    path_build(&w->paths[PATH_CHAL_C_L],   CTRL_CHAL_C,   ARRAY_COUNT(CTRL_CHAL_C));
-    path_build(&w->paths[PATH_CHAL_D_L],   CTRL_CHAL_D,   ARRAY_COUNT(CTRL_CHAL_D));
     path_build(&w->paths[PATH_CHAL_E_L],   CTRL_CHAL_E,   ARRAY_COUNT(CTRL_CHAL_E));
     path_build(&w->paths[PATH_CHAL_F_L],   CTRL_CHAL_F,   ARRAY_COUNT(CTRL_CHAL_F));
     path_mirror(&w->paths[PATH_TOP_DIVE_R], &w->paths[PATH_TOP_DIVE_L]);
@@ -758,8 +722,6 @@ void wave_init(Wave *w)
     path_mirror(&w->paths[PATH_CORNER_R],   &w->paths[PATH_CORNER_L]);
     path_mirror(&w->paths[PATH_CHAL_A_R],   &w->paths[PATH_CHAL_A_L]);
     path_mirror(&w->paths[PATH_CHAL_B_R],   &w->paths[PATH_CHAL_B_L]);
-    path_mirror(&w->paths[PATH_CHAL_C_R],   &w->paths[PATH_CHAL_C_L]);
-    path_mirror(&w->paths[PATH_CHAL_D_R],   &w->paths[PATH_CHAL_D_L]);
     path_mirror(&w->paths[PATH_CHAL_E_R],   &w->paths[PATH_CHAL_E_L]);
     path_mirror(&w->paths[PATH_CHAL_F_R],   &w->paths[PATH_CHAL_F_L]);
 
@@ -920,12 +882,11 @@ typedef struct {
     float    speed;      /* multiple of the entry speed                          */
 } ChallengeRound;
 
-/* within_gap has a floor, and it is not a matter of taste: the gun fires once
-   every FIRE_COOLDOWN ticks and the five flyers of a group arrive one behind
-   the other, so a group spaced tighter than that arrives faster than it can be
-   shot at. The shooting still works out over a whole pair - there is a long
-   tail after the last one lands - but in the moment you are always behind,
-   which is what made the fourth round feel impossible rather than hard. */
+/* within_gap has a floor: the gun fires once every FIRE_COOLDOWN ticks and a
+   group's five flyers arrive one behind the other, so anything tighter arrives
+   faster than it can be shot at. It still works out over a whole pair, but in
+   the moment you are always behind - which is what made round 4 feel
+   impossible rather than hard. */
 #define CHAL_MIN_GAP FIRE_COOLDOWN
 
 /* The four lanes a round flies, in the order its groups take them. */
@@ -947,17 +908,10 @@ static const ChallengeRound CHAL_ROUNDS[SHP_BONUS_COUNT] = {
     { { { PATH_CHAL_F_L, -70.0f }, { PATH_CHAL_F_L, -34.0f },
         { PATH_CHAL_E_L,  26.0f }, { PATH_CHAL_E_L,  74.0f } }, 60, 15, 1.05f },
 
-    /* A tight pair on the left and a spread one on the right, so the two
-       halves do not ask for the same footwork.
-
-       This used to keep one of the old screen-crossing sweeps for variety, and
-       it was the wrong shape for the job: C enters through the left edge at
-       mid-height and is immediately travelling across, so the first you see of
-       a flyer is already level with you and moving. Every other lane comes in
-       over the top, where you watch it arrive and set your cadence against it.
-       A round is allowed to be hard to stand in the right place for; it is not
-       allowed to need shots already in the air for something that had not
-       appeared yet. */
+    /* A tight pair on the left and a spread one on the right, so the halves
+       want different footwork. Every lane arrives over the top: one entering
+       from the side is already level with you and moving when you first see
+       it, which needs shots in the air for something that had not appeared. */
     { { { PATH_CHAL_F_L, -60.0f }, { PATH_CHAL_E_L, -30.0f },
         { PATH_CHAL_E_L,  28.0f }, { PATH_CHAL_F_L,  74.0f } }, 42, 14, 1.15f },
 };
@@ -1041,19 +995,11 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
 
     const ChalLane *lanes = chal_lanes(variant);
 
-    /* Eight groups of five, flown as four pairs: a lane and its mirror in the
-       air together, and nothing else until both have left the screen.
-     *
-     * The arcade never put more than two groups up at once and left a clear
-     * gap between pairs, and this is why. A bonus round pays for catching the
-     * whole pattern, so it has to be a pattern you can see the whole of - with
-     * groups launched on a fixed cadence, three or four were in flight at any
-     * moment and there was no reading it, only shooting at the nearest thing.
-     *
-     * A pair is done when the slower of its two lanes has carried its last
-     * flyer off the end, so the wait is derived rather than guessed - the lanes
-     * differ in length and the speed ramps with the stage, and a fixed number
-     * would go wrong at both ends of that. */
+    /* Eight groups of five, as four pairs: two lanes up together and nothing
+       else until both have left, the way the arcade did it. Three or four at
+       once is not a pattern anyone can read. The wait is derived from the
+       slower of the pair's two lanes, which differ in length, at a speed that
+       ramps with the stage. */
     int start[MAX_ENEMIES / CHAL_GROUP], at = 0;
 
     for (int g = 0; g < (int)ARRAY_COUNT(start); g += 2) {
@@ -2120,7 +2066,7 @@ const char *wave_path_name(int path)
         "top dive L", "top dive R", "sweep L", "sweep R",
         "return L",   "return R",   "corner L", "corner R",
         "chal A L",   "chal A R",   "chal B L", "chal B R",
-        "chal C L",   "chal C R",   "chal D L", "chal D R",
+        "chal E L",   "chal E R",   "chal F L", "chal F R",
     };
     return (path >= 0 && path < PATH_COUNT) ? NAME[path] : "?";
 }

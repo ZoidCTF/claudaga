@@ -102,8 +102,6 @@ typedef enum {
        lets a round name one lane and get the mirrored pair. */
     PATH_CHAL_A_L,   PATH_CHAL_A_R,
     PATH_CHAL_B_L,   PATH_CHAL_B_R,
-    PATH_CHAL_C_L,   PATH_CHAL_C_R,
-    PATH_CHAL_D_L,   PATH_CHAL_D_R,
     PATH_CHAL_E_L,   PATH_CHAL_E_R,
     PATH_CHAL_F_L,   PATH_CHAL_F_R,
     PATH_COUNT
@@ -279,16 +277,10 @@ void wave_restart_challenge(Wave *w, int stage, int variant);
 
 bool wave_is_challenge(const Wave *w);
 
-/* Whether a bonus round can be beaten without moving.
- *
- * A bonus round is a pattern, and the thing worth knowing about a pattern is
- * where to stand for it. If one column reaches every group there is nothing to
- * know - park in the middle and hold the trigger - which is what a round made
- * of mirrored pairs allows by construction.
- *
- * Counted per group, not per flyer: the five flyers of a group fly one lane
- * spaced out in time, so a column that reaches the lane reaches all five.
- * Returns the most groups any single column reaches, of 8. */
+/* The most groups any single column reaches, of 8. If one reaches all eight
+   there is nothing to learn - park in the middle and hold the trigger, which is
+   what mirrored pairs allow by construction. Counted per group: a group's five
+   flyers share one lane, so a column reaching the lane reaches all five. */
 int wave_challenge_coverage(const Wave *w, int variant, float *best_x,
                             int *at_centre, bool dual);
 int  wave_challenge_hits(const Wave *w);
