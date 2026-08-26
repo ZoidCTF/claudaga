@@ -164,6 +164,11 @@ typedef struct {
        never attacks and never fires, and anything not shot simply escapes. */
     bool  challenge;
     int   challenge_hits;
+    int   chal_peak_groups;  /* most groups on screen at once, this round   */
+    int   chal_peak_flyers;  /* and most individual flyers                  */
+    int   chal_quiet;        /* longest stretch with an empty screen        */
+    int   chal_quiet_run;
+    int   chal_last_seen;    /* tick the screen last had anything on it     */
 
     /* The wave draws from its own generator rather than the global rand().
        Sharing one meant the attack mix depended on how many times the

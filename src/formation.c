@@ -224,6 +224,9 @@ static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
 
 /* A flat trim on every bonus round; they were authored too fast to read. Kept
    out of the per-round table so that still says how the rounds differ. */
+
+/* Flyers per group. Eight groups of five fill the wave. */
+#define CHAL_GROUP 5
 #define CHAL_SPEED_TRIM 0.75f
 
 /* How far the parked block drifts either side of its slots. Unlike everything
@@ -842,6 +845,11 @@ void wave_restart(Wave *w, int stage, int entry)
 {
     w->challenge      = false;
     w->challenge_hits = 0;
+    w->chal_peak_groups = 0;
+    w->chal_peak_flyers = 0;
+    w->chal_quiet       = 0;
+    w->chal_quiet_run   = 0;
+    w->chal_last_seen   = 0;
     w->entry_set      = ((entry % ENTRY_SETS) + ENTRY_SETS) % ENTRY_SETS;
     set_difficulty(w, stage);
     wave_reset_common(w);
@@ -858,16 +866,16 @@ void wave_restart(Wave *w, int stage, int entry)
    present the same problem even where they share a pass. */
 typedef struct {
     PathId lane_a, lane_b;
-    int    group_gap;    /* ticks between one group of five and the next */
-    int    within_gap;   /* ticks between flyers inside a group          */
-    float  speed;        /* multiple of the entry speed                  */
+    int    pair_pause;   /* empty screen between one pair of groups and the next */
+    int    within_gap;   /* ticks between flyers inside a group                  */
+    float  speed;        /* multiple of the entry speed                          */
 } ChallengeRound;
 
 static const ChallengeRound CHAL_ROUNDS[SHP_BONUS_COUNT] = {
-    { PATH_CHAL_A_L, PATH_CHAL_B_L, 74, 13, 1.15f },
-    { PATH_CHAL_C_L, PATH_CHAL_D_L, 66, 10, 1.25f },
-    { PATH_CHAL_B_L, PATH_CHAL_C_L, 82, 15, 1.05f },
-    { PATH_CHAL_D_L, PATH_CHAL_A_L, 58,  9, 1.35f },
+    { PATH_CHAL_A_L, PATH_CHAL_B_L, 54, 13, 1.15f },
+    { PATH_CHAL_C_L, PATH_CHAL_D_L, 48, 10, 1.25f },
+    { PATH_CHAL_B_L, PATH_CHAL_C_L, 60, 15, 1.05f },
+    { PATH_CHAL_D_L, PATH_CHAL_A_L, 42,  9, 1.35f },
 };
 
 void wave_restart_challenge(Wave *w, int stage, int variant)
@@ -901,17 +909,44 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
         round->lane_b, (PathId)(round->lane_b + 1),
     };
 
-    /* Eight groups of five, stepping through the lanes so consecutive groups
-       never share one. */
+    /* Eight groups of five, flown as four pairs: a lane and its mirror in the
+       air together, and nothing else until both have left the screen.
+     *
+     * The arcade never put more than two groups up at once and left a clear
+     * gap between pairs, and this is why. A bonus round pays for catching the
+     * whole pattern, so it has to be a pattern you can see the whole of - with
+     * groups launched on a fixed cadence, three or four were in flight at any
+     * moment and there was no reading it, only shooting at the nearest thing.
+     *
+     * A pair is done when the slower of its two lanes has carried its last
+     * flyer off the end, so the wait is derived rather than guessed - the lanes
+     * differ in length and the speed ramps with the stage, and a fixed number
+     * would go wrong at both ends of that. */
+    int start[MAX_ENEMIES / CHAL_GROUP], at = 0;
+
+    for (int g = 0; g < (int)ARRAY_COUNT(start); g += 2) {
+        float longest = 0.0f;
+        for (int k = 0; k < 2 && g + k < (int)ARRAY_COUNT(start); ++k) {
+            float len = w->paths[lanes[(g + k) % 4]].length;
+            if (len > longest) longest = len;
+        }
+        start[g] = at;
+        if (g + 1 < (int)ARRAY_COUNT(start)) start[g + 1] = at;
+
+        at += (int)(longest / speed)
+            + (CHAL_GROUP - 1) * round->within_gap
+            + round->pair_pause;
+    }
+
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         Enemy *e = &w->enemies[i];
-        int group  = i / 5;
-        int within = i % 5;
+        int group  = i / CHAL_GROUP;
+        int within = i % CHAL_GROUP;
 
         e->shape       = shape;
         e->state       = ENEMY_WAITING;
         e->path        = lanes[group % 4];
-        e->launch_tick = group * round->group_gap + within * round->within_gap;
+        e->launch_tick = start[group] + within * round->within_gap;
         e->speed       = speed;
         e->pos         = w->paths[e->path].pt[0];
         e->heading     = HEADING_S;
@@ -1149,6 +1184,38 @@ static void launch_attack(Wave *w, float player_x)
 
 static void track_lane_gap(Wave *w);
 static void track_convoys(Wave *w);
+static bool on_camera(Vec2 p);
+
+/* What a bonus round actually put on screen, as opposed to what its schedule
+   intended. Two groups at a time with a clear gap between pairs is the rule the
+   arcade kept to, and the only way to know it holds across four patterns and a
+   speed that ramps is to count. */
+static void track_challenge(Wave *w)
+{
+    int seen[MAX_ENEMIES / CHAL_GROUP] = { 0 };
+    int flyers = 0, groups = 0, waiting = 0;
+
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        const Enemy *e = &w->enemies[i];
+        if (e->state == ENEMY_WAITING) { ++waiting; continue; }
+        if (e->state != ENEMY_ENTERING) continue;
+        if (!on_camera(e->pos)) continue;
+        ++flyers;
+        if (!seen[i / CHAL_GROUP]++) ++groups;
+    }
+
+    if (groups > w->chal_peak_groups) w->chal_peak_groups = groups;
+    if (flyers > w->chal_peak_flyers) w->chal_peak_flyers = flyers;
+
+    /* Between pairs only: not before the first has flown, and not after the
+       last, when an empty screen is the round being over rather than a gap. */
+    if (flyers > 0) {
+        w->chal_quiet_run = 0;
+        w->chal_last_seen = w->tick;
+    } else if (w->chal_last_seen > 0 && waiting > 0) {
+        if (++w->chal_quiet_run > w->chal_quiet) w->chal_quiet = w->chal_quiet_run;
+    }
+}
 
 /* The arcade pays more for a boss killed with its escort intact, and a group
    shares one dive path, so counting them is asking who else is on it. */
@@ -1566,6 +1633,7 @@ void wave_update(Wave *w, float player_x)
 
     track_lane_gap(w);
     track_convoys(w);
+    if (w->challenge) track_challenge(w);
 
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         const Enemy *e = &w->enemies[i];
@@ -1619,6 +1687,10 @@ void wave_print_stats(const Wave *w)
     }
     if (w->challenge) {
         printf("challenging stage - no entry set, and nothing shoots\n");
+        printf("  most on screen at once: %d groups, %d flyers (2 groups is the rule)\n",
+               w->chal_peak_groups, w->chal_peak_flyers);
+        printf("  longest empty screen between pairs: %d ticks (%.2fs)\n",
+               w->chal_quiet, w->chal_quiet / 60.0f);
     } else {
         printf("entry set: %d of %d\n", w->entry_set, ENTRY_SETS);
     }
