@@ -106,6 +106,13 @@ static const Vec2 CTRL_CHAL_B[] = {
    most of its time travelling down the screen, which is what makes it read
    differently from the rest - the flyers stay at a constant height and it is
    the horizontal lead that has to be judged. */
+/* Not used by any round. C enters through the left edge already at the height
+   it will pass the fighter at, which leaves nothing to react to - a flyer that
+   is level with you the moment you first see it can only be met with shots
+   already in the air. Kept because it is authored and harmless unreferenced,
+   but do not put it back without giving it a top entry first. D is simply
+   spare: it comes in over the top and is fine, it just crosses too much of the
+   screen for the later rounds, which want columns. */
 static const Vec2 CTRL_CHAL_C[] = {
     { -34, 110 }, {  26, 150 }, {  74, 112 }, { 126, 156 },
     { 172, 118 }, { 214, 162 }, { 258, 124 },
@@ -940,10 +947,19 @@ static const ChallengeRound CHAL_ROUNDS[SHP_BONUS_COUNT] = {
     { { { PATH_CHAL_F_L, -70.0f }, { PATH_CHAL_F_L, -34.0f },
         { PATH_CHAL_E_L,  26.0f }, { PATH_CHAL_E_L,  74.0f } }, 60, 15, 1.05f },
 
-    /* One sweep still crossing the screen, to keep a round that cannot be
-       stood out entirely, with three columns around it. */
-    { { { PATH_CHAL_E_L, -58.0f }, { PATH_CHAL_C_L,   0.0f },
-        { PATH_CHAL_F_L,  32.0f }, { PATH_CHAL_E_L,  70.0f } }, 42, 14, 1.15f },
+    /* A tight pair on the left and a spread one on the right, so the two
+       halves do not ask for the same footwork.
+
+       This used to keep one of the old screen-crossing sweeps for variety, and
+       it was the wrong shape for the job: C enters through the left edge at
+       mid-height and is immediately travelling across, so the first you see of
+       a flyer is already level with you and moving. Every other lane comes in
+       over the top, where you watch it arrive and set your cadence against it.
+       A round is allowed to be hard to stand in the right place for; it is not
+       allowed to need shots already in the air for something that had not
+       appeared yet. */
+    { { { PATH_CHAL_F_L, -60.0f }, { PATH_CHAL_E_L, -30.0f },
+        { PATH_CHAL_E_L,  28.0f }, { PATH_CHAL_F_L,  74.0f } }, 42, 14, 1.15f },
 };
 
 static const ChalLane *chal_lanes(int variant)
@@ -1887,9 +1903,23 @@ void wave_print_stats(const Wave *w)
                     float deg = acosf(c) * 180.0f / (float)M_PI;
                     if (deg > worst) worst = deg;
                 }
+                /* Which edge it arrives through. Over the top is the only one
+                   that gives any warning: a flyer entering from the side is
+                   already at the height it will pass you at, and travelling,
+                   so there is nothing to react to and no cadence to set. */
+                const char *from = "nowhere";
+                for (int k = 0; k < pp->n; ++k) {
+                    float x = pp->pt[k].x + ll[i].dx, y = pp->pt[k].y;
+                    if (x < 0.0f || x > (float)GAME_W ||
+                        y < 0.0f || y > (float)GAME_H) continue;
+                    from = (y < 24.0f)                    ? "over the top"
+                         : (y > (float)GAME_H - 24.0f)    ? "from below"
+                                                          : "FROM THE SIDE";
+                    break;
+                }
                 printf("    lane %d sweeps x %.0f..%.0f (%.0f wide), "
-                       "sharpest turn %.0f deg\n",
-                       i, lo + ll[i].dx, hi + ll[i].dx, hi - lo, worst);
+                       "turn %.0f deg, arrives %s\n",
+                       i, lo + ll[i].dx, hi + ll[i].dx, hi - lo, worst, from);
             }
         }
     } else {
