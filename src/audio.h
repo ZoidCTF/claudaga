@@ -3,26 +3,17 @@
 
 #include <stdbool.h>
 
-/* Sound, through SDL_mixer.
+/* Sound, through SDL_mixer. Two rules, both about what it may not do.
  *
- * Two rules shape this module, and both are about what sound is *not* allowed
- * to do.
+ * Never load-bearing: every entry point works whether or not a device opened or
+ * a file was found, so there is no return value to check and a machine with no
+ * sound card plays in silence.
  *
- * It is never load-bearing. Every entry point here works whether or not a
- * device opened, whether or not SDL_mixer initialised, and whether or not a
- * single file was found - callers do not check a return value and there is
- * nothing to check. A machine with no sound card plays the game in silence
- * rather than refusing to start, and a missing file costs one effect rather
- * than the run.
+ * Never perturbs the simulation: the variant picker has its own generator, or
+ * muting the game would change which enemy attacked next and every headless
+ * measurement would be of a different game.
  *
- * And it never perturbs the simulation. The variant picker draws from its own
- * generator, for exactly the reason the wave has one: if it shared a generator
- * with anything the game reads, muting the game would silently change which
- * enemy attacked next, and every headless measurement in this project would be
- * measuring a different game from the one being played.
- *
- * Files are found relative to the executable via SDL_GetBasePath rather than
- * the working directory, so the game can still be launched from anywhere. */
+ * Files are found via SDL_GetBasePath, not the working directory. */
 
 typedef enum {
     SFX_SHOT,        /* the fighter fires                      */

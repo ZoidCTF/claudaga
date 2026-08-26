@@ -1,19 +1,11 @@
-/* The artwork.
+/* The artwork. Every shape faces north on a grid running -8..+8, so it fills
+ * the same 16x16 the sprite cells did and the collision radii still hold.
  *
- * Every shape is drawn facing north on a grid running -8..+8, so it occupies
- * the same 16x16 the sprite sheet cells did and the collision radii tuned
- * against those cells still hold.
+ * Only the right half is written out; `mirror` draws a polygon again flipped
+ * across x = 0, which makes the symmetry exact rather than something to get
+ * right twice. Polygons paint in the order listed, so wings and shells first.
  *
- * Only the right half of each design is written out. The `mirror` flag on a
- * polygon draws it again flipped across x = 0, which halves the typing and,
- * more usefully, makes the symmetry exact rather than something to get right
- * twice. Polygons are painted in the order listed, so the pieces that sit
- * behind - wings, shells - come first.
- *
- * These are loosely after the arcade designs rather than traced from them:
- * the fighter's swept wings and red tips, the bee's yellow body between blue
- * wings, the butterfly's spread red wings, the boss's shell around a bright
- * core. */
+ * Loosely after the arcade designs rather than traced from them. */
 
 #include "shape.h"
 

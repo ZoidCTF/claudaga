@@ -4,14 +4,10 @@
 #include "gfx.h"
 #include "shape.h"
 
-/* Short-lived visual effects: the two explosions, and the score that pops up
- * where a Boss Galaga died.
- *
- * The explosions are generated rather than drawn. As raster art they were four
- * and five fixed frames; as geometry it costs less and reads better to throw
- * shards outward from the kill and let them fade, and it scales with the rest
- * of the picture for free. Each blast carries a seed, so two deaths in the same
- * spot do not produce the same pattern. */
+/* Short-lived effects: the two explosions and the score popped up where a boss
+ * died. Generated rather than drawn - shards thrown outward from the kill read
+ * better than fixed frames and scale with the rest of the picture. Each blast
+ * carries a seed, so two deaths in one spot differ. */
 
 #define MAX_FX 24
 

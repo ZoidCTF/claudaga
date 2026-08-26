@@ -3,17 +3,12 @@
 
 #include "gfx.h"
 
-/* A stroke font: every glyph is a handful of line segments, drawn with real
- * thickness as geometry.
+/* A stroke font: every glyph is line segments drawn with real thickness, so it
+ * scales the way the ships do rather than as bigger pixels.
  *
- * It replaces a 5x7 bitmap, which scaled by turning each pixel into a bigger
- * square and looked increasingly out of place beside artwork that had gone
- * smooth. Strokes scale the way the ships do.
- *
- * The metrics are deliberately the ones the bitmap had, so every existing
- * caller and every piece of layout arithmetic still lines up: a glyph occupies
- * a box FONT_W across and FONT_H down from the position given, and glyphs step
- * by FONT_ADVANCE. Segment coordinates are authored on that same box. */
+ * The metrics are the 5x7 bitmap's, so existing layout arithmetic still lines
+ * up: a glyph fills FONT_W by FONT_H from the position given and steps by
+ * FONT_ADVANCE. Segment coordinates are authored on that same box. */
 
 #define FONT_W       5
 #define FONT_H       7

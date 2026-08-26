@@ -5,25 +5,16 @@
 
 /* Vector artwork, drawn as coloured triangles through SDL_RenderGeometry.
  *
- * This replaces the sprite sheet for everything that flies. Three things fall
- * out of it that the raster art could not give:
+ * Replaces the sprite sheet for everything that flies, which buys resolution
+ * independence, continuous rotation, and free recolouring - a damaged boss and
+ * the captured fighter are palette swaps rather than drawings.
  *
- *   - it is resolution independent, so the game can render at the window's
- *     real size instead of an integer multiple of 224x288;
- *   - rotation is continuous, which retires the whole business of storing one
- *     quadrant of frames and mirroring it;
- *   - recolouring is free, so a damaged Boss Galaga and the captured red
- *     fighter are palette swaps rather than separate drawings.
+ * One unit is one pixel of the 224x288 picture, the origin is the sprite's
+ * centre, and the artwork faces north, so sizes match the 16x16 cells the
+ * collision radii were tuned against.
  *
- * Shapes are authored in the same units the game already thinks in: one unit
- * is one pixel of the 224x288 picture, the origin is the centre of the sprite,
- * and the artwork faces north. Sizes therefore match the 16x16 cells the
- * collision radii were tuned against, so nothing about gameplay shifts.
- *
- * Every polygon is drawn as a triangle fan, which means each one must be
- * convex. That is a real constraint on the artwork rather than a limitation
- * worth engineering around: a concave wing is two convex pieces, and keeping
- * the renderer a fan means no triangulator to write or get wrong. */
+ * Every polygon is a triangle fan, so each must be convex: a concave wing is
+ * two convex pieces, and there is no triangulator to get wrong. */
 
 #define SHAPE_PAL_MAX 6
 

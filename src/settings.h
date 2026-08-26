@@ -3,18 +3,10 @@
 
 #include <stdbool.h>
 
-/* The handful of things a player is allowed to change, and the file they live
- * in.
- *
- * It goes beside the high score, in whatever directory SDL_GetPrefPath names,
- * for the same reason: next to the executable is often somewhere unwritable.
- * Two files rather than one because they are written at different moments -
- * the high score when a game ends, these the instant they are changed - and
- * sharing a file would mean one of them rewriting the other's value from a
- * stale copy.
- *
- * Every failure is silent. A game that will not start because it could not
- * read a volume is worse than one that starts at the default. */
+/* What a player may change, kept beside the high score under SDL_GetPrefPath
+ * because next to the executable is often unwritable. Two files, not one: they
+ * are written at different moments, and sharing would mean one rewriting the
+ * other from a stale copy. Every failure is silent. */
 
 #define VOLUME_STEPS 10
 

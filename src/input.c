@@ -380,14 +380,10 @@ int input_selftest(void)
     pump(); input_sample(&in);
     while (input_take_ui() != UI_NONE) { }
 
-    /* Buttons that drive the menu.
-     *
-     * The face buttons are fire, so what they must *not* do matters as much as
-     * what they do. A pushing a confirm is fine on a menu and was a disaster in
-     * play, where confirm meant pause and every shot toggled the game on and
-     * off; B pushing a back abandoned the run. They still push those actions -
-     * a menu needs them - and the view decides whether to listen. Pause and
-     * leaving are on Start and Back, which no thumb rests on. */
+    /* Buttons that drive the menu. The face buttons are also fire, so A and B
+     * push confirm and back but the view decides whether to listen - in play,
+     * listening meant every shot toggled pause. Pause and leaving are on Start
+     * and Back, which no thumb rests on. */
     SDL_JoystickSetVirtualButton(vj, SDL_CONTROLLER_BUTTON_A, 1);
     pump();
     check("A confirms", input_take_ui() == UI_CONFIRM, true);

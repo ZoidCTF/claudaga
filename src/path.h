@@ -3,12 +3,10 @@
 
 #include "common.h"
 
-/* An entry path, baked from a handful of control points into a dense polyline
- * with running arc length. Two things matter for the entry animation and both
- * fall out of that: an enemy must travel at a steady speed no matter how the
- * curve bunches up, and it must point along its direction of travel. Walking a
- * spline by its raw parameter gives neither, so the curve is resampled by
- * distance once at startup and everything after that is a lookup. */
+/* An entry path, baked from control points into a dense polyline with running
+ * arc length. Walking a spline by its raw parameter gives neither a steady
+ * speed nor a usable heading, so it is resampled by distance once at startup
+ * and everything after is a lookup. */
 
 #define PATH_MAX_SAMPLES 512
 
@@ -34,11 +32,10 @@ float path_heading(const Path *p, float s);
    right halves of a symmetric entry only need authoring once. */
 void path_mirror(Path *dst, const Path *src);
 
-/* A cubic Hermite curve, used to join the end of a shared entry path to each
- * enemy's own formation slot. Hermite is the right tool here because it is
- * defined by its endpoint tangents: feeding in the path's exit direction makes
- * the join continue the flight rather than kink away from it, and pinning the
- * arrival tangent means the enemy is already facing the way it will sit. */
+/* Joins the end of a shared entry path to each enemy's own slot. Hermite fits
+ * because it is defined by its endpoint tangents: the path's exit direction
+ * makes the join continue the flight instead of kinking, and pinning the
+ * arrival tangent leaves the enemy facing the way it will sit. */
 Vec2  hermite_point(Vec2 p0, Vec2 t0, Vec2 p1, Vec2 t1, float t);
 Vec2  hermite_tangent(Vec2 p0, Vec2 t0, Vec2 p1, Vec2 t1, float t);
 float hermite_length(Vec2 p0, Vec2 t0, Vec2 p1, Vec2 t1);

@@ -1,15 +1,8 @@
-/* Claudaga.
+/* Claudaga. Opens on the title screen; START runs the game. Behind play on Tab
+ * sit two tools: the shape browser and the pose check.
  *
- * Opens on the title screen; START runs the game. Behind play on Tab sit two
- * tools: the shape browser, which shows the vector artwork and the font at a
- * size where they can be judged, and the pose check, which drives a shape
- * through a full circle of headings.
- *
- * Nothing here loads an image. The project began by indexing a ripped arcade
- * sprite sheet; every one of those thirty groups is now generated - polygons
- * for the artwork, strokes for the text, per-frame geometry for the explosions
- * and the tractor beam - so the sheet, its atlas and the browser that displayed
- * it have all gone. */
+ * Nothing here loads an image - the artwork is polygons, the text strokes, and
+ * the explosions and tractor beam per-frame geometry. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,15 +26,10 @@ static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color DIM    = { 144, 144, 160, 255 };
 static const SDL_Color PALE   = { 230, 230, 240, 255 };
 
-/* The title is where the game opens; the tools sit behind play on Tab. */
-/* The shape browser, the pose check and the debug keys are for building the
-   game rather than playing it, so a release build does not carry the ways in.
-   The views themselves still compile - the command-line flags that render them
-   are how the artwork gets checked, and those cost nothing to leave - but Tab,
-   F2, F3 and R do nothing, and the title screen stops advertising them.
-
-   /DNDEBUG is what build.bat passes for a release; a debug build gets the
-   lot. */
+/* The tools are for building the game, not playing it, so a release carries no
+   way in: Tab, F2, F3 and R do nothing and the title stops advertising them.
+   The views still compile, since the command-line flags that render them are
+   how the artwork gets checked. */
 #ifdef NDEBUG
 #define TOOLS 0
 #else
@@ -59,37 +47,22 @@ typedef enum { MENU_ONE, MENU_TWO, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuIte
 
 /* --------------------------------------------------------------- seats */
 
-/* Two-player alternating play, the way the cabinet did it: one fighter at a
-   time, and a turn ends when you lose one.
- *
- * Each seat is a whole Game. That is not extravagance - taking turns means
- * player two's formation is their own formation, at their own stage, with
- * their own crew, waiting exactly as they left it. Sharing one Game and
- * swapping scores would be a different game entirely.
- *
- * A seat that is out of fighters, or has finished, is skipped; when both are
- * done the session is over. */
+/* Two-player alternating play, as the cabinet did it: one fighter at a time,
+ * and a turn ends when you lose one. Each seat is a whole Game, because taking
+ * turns means player two's formation is their own, at their own stage, waiting
+ * as they left it. A seat that is out or finished is skipped. */
 #define SEATS 2
 #define HANDOVER_TICKS 110
 
-/* The longest the game will wait for a board to go quiet before packing it
-   away anyway. Ten seconds is far past anything a real settle takes - the
-   measured range is 42 to 229 ticks, plus the 240 of a GAME OVER message when
-   there is one - so reaching it means something is stuck, and going on is
-   better than stopping. */
+/* The longest to wait for a board to go quiet before packing it away anyway.
+   A real settle measures 42 to 229 ticks, so reaching this means something is
+   stuck and going on beats stopping. */
 #define SETTLE_LIMIT 900
 
-/* Changing hands is a sequence, not an instant.
- *
- * A fighter is lost, and the first version swapped seats on that same tick.
- * Three things were wrong with it at once: the wreck of the outgoing ship
- * carried over on to the incoming player's screen, the outgoing board vanished
- * mid-dive, and the incoming one appeared fully formed with no explanation.
- *
- * So: let the explosion finish and the air clear, lift the outgoing formation
- * off the top of the screen, announce whose turn it is, and fly the incoming
- * formation down into place. Only then do the controls go live - a board still
- * arriving is not a board you can be asked to fight. */
+/* Changing hands is a sequence, not an instant: let the explosion finish and
+ * the air clear, lift the outgoing formation off the top, announce whose turn
+ * it is, then fly the incoming one down. Controls go live only at the end - a
+ * board still arriving is not one you can be asked to fight. */
 typedef enum {
     TURN_PLAYING,
     TURN_SETTLING,   /* the explosion, and whatever is still flying */
@@ -167,13 +140,10 @@ static void session_begin(Session *s, int seats)
     session_sync(s);
 }
 
-/* One tick of a session: the turn that is running, the banner between turns,
-   and noticing when everybody is out.
- *
- * Shared by the interactive loop and the headless warm-up for the same reason
- * play_tick is: a turn taken two different ways is two turns that will
- * eventually disagree, and the one the harness drives is the one nobody
- * watches. */
+/* One tick of a session: the running turn, the banner between turns, and
+   noticing when everybody is out. Shared by the interactive loop and the
+   headless warm-up - a turn taken two ways is two turns that will disagree,
+   and the harness drives the one nobody watches. */
 /* Passes the controls to `next`: announce it, and put its board off the top
    of the screen so it has somewhere to fly down from. */
 static void session_hand_to(Session *s, int next)
@@ -667,12 +637,9 @@ static void usage(void)
             "the game starts by default; the view flags select a tool instead\n");
 }
 
-/* The menu, as actions rather than as key handlers.
- *
- * Both the keyboard and a controller drive these, and they have to stay the
- * same menu: written twice, one of them acquires a case the other lacks the
- * first time anything is added. It is the same reasoning that put the warm-up
- * and the interactive loop through one play_tick. */
+/* The menu as actions rather than key handlers: the keyboard and a controller
+   both drive it, and written twice one of them acquires a case the other
+   lacks the first time anything is added. */
 typedef struct {
     View view;
     int  menu_sel;
@@ -830,13 +797,9 @@ static void ui_start_demo(Ui *u, Game *game)
     SDL_Log("attract: nobody home, showing the game off");
 }
 
-/* Tab visits the tools and comes back where it started.
- *
- * It used to walk the whole view list, which from the title screen meant its
- * first stop was the game - so the key the title screen labels TAB TOOLS
- * dropped you into a wave instead. The tools are the shape browser and the
- * pose check; play and the title are places to return to, not stations on the
- * way round. */
+/* Tab visits the tools and comes back where it started. The tools are the
+   shape browser and the pose check; play and the title are places to return
+   to, not stations on the way round. */
 static void ui_next_view(Ui *u)
 {
     if (!TOOLS || u->options) return;

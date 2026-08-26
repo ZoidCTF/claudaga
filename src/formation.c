@@ -8,11 +8,8 @@
 
 /* ------------------------------------------------------------------ slots */
 
-/* The wave as it ends up: four Boss Galaga across the top, two ranks of eight
-   butterflies, then two ranks of ten bees. Slots are numbered in this order,
-   and the flights below simply take them eight at a time - which lands the
-   bosses and the first butterflies in the opening flight, as on the real
-   board. */
+/* Four bosses across the top, two ranks of eight butterflies, two of ten bees.
+   Flights take slots eight at a time in this order, as on the real board. */
 typedef struct {
     ShapeId shape;
     int     first_col, count;
@@ -59,56 +56,39 @@ Vec2 formation_slot_pos(int slot)
 
 /* ------------------------------------------------------------------ paths */
 
-/* Control points are in screen pixels and the curve passes through every one,
-   so these read as the shape they draw. Both start well outside the screen so
-   an enemy is already up to speed by the time it becomes visible. */
+/* Control points are screen pixels and the curve passes through every one.
+   Paths start off-screen so an enemy is up to speed before it is visible. */
 
-/* Straight down the middle from above, then a full loop low on the screen -
-   the signature Galaga move. Both paths stop below the formation rather than
-   running up into it: the shared flight ends where the enemies would have to
-   diverge, and the curve into each individual slot takes over from there.
-   Approaching every slot from beneath is also what lets that curve arrive
-   pointing north without hooking back on itself. The loop is deliberately
-   round and tight rather than a lazy oval; that is what reads as a loop at
-   this size. */
+/* Down the middle, then a full loop low on the screen - the signature Galaga
+   move. Ends below the formation heading north, where the per-slot join curve
+   takes over; arriving from beneath is what stops that join hooking back. */
 static const Vec2 CTRL_TOP_DIVE[] = {
     { 100, -28 }, { 100,  56 }, { 100, 132 }, { 100, 190 },
     {  88, 226 }, {  60, 240 }, {  32, 226 }, {  22, 196 },
     {  34, 168 }, {  62, 158 }, {  94, 150 },
 };
 
-/* In from the left edge, climbing, into a loop across the top, ending back
-   below the formation like the dive does. Deliberately shaped to occupy a
-   different band of the screen than the dive, so two flights in the air at once
-   stay legible.
-
-   It used to start below the bottom-left corner and climb the left edge, which
-   ran it straight along the fighter's row on the way in - and an enemy that
-   arrives from off-screen at the fighter's own altitude cannot be dodged,
-   because the first the player sees of it is the collision. Coming down at the
-   fighter from above is fair; arriving beside it out of nothing is not. It now
-   enters well above the row and never goes back down. */
+/* In from the left, climbing into a loop across the top, ending below the
+   formation like the dive. Occupies a different band of the screen so two
+   flights at once stay legible. Enters above the fighter's row and never comes
+   back down to it: an enemy arriving from off-screen at the fighter's own
+   altitude cannot be dodged. */
 static const Vec2 CTRL_SWEEP[] = {
     { -28, 196 }, {   4, 182 }, {  32, 162 }, {  50, 136 },
     {  56, 110 }, {  72,  88 }, { 102,  74 }, { 134,  88 },
     { 144, 118 }, { 122, 142 }, {  96, 134 },
 };
 
-/* The way home after a dive. A diver leaves the bottom of the screen, so it
-   comes back in over the top, drops down the outside of the formation where it
-   cannot cut through the enemies still parked there, and turns back up beneath
-   it. Ending below the formation heading north is the whole point: it leaves
-   the enemy in exactly the state an arriving enemy is in, so the same join
-   curve finishes the trip. */
+/* The way home. Divers leave at the bottom, so they re-enter over the top,
+   drop down outside the parked block, and turn back up beneath it - arriving in
+   the same state as a new enemy, so the same join curve finishes the trip. */
 static const Vec2 CTRL_RETURN[] = {
     {  16, -24 }, {  18,  40 }, {  22, 104 }, {  36, 148 },
     {  68, 166 }, {  96, 156 },
 };
 
-/* Challenging-stage passes. Unlike every other path here these begin and end
-   off-screen: nothing forms up in a bonus round, so a flyer that survives its
-   run simply leaves. A big sweeping S down the screen, and a climb through a
-   loop and out of the top. */
+/* Bonus-round passes: an S down the screen, and a climb out through the top.
+   These begin and end off-screen - nothing forms up in a bonus round. */
 static const Vec2 CTRL_CHAL_A[] = {
     {  40, -30 }, {  70,  26 }, {  38,  76 }, {  56, 130 },
     { 118, 160 }, { 176, 194 }, { 150, 250 }, {  96, 300 },
@@ -165,17 +145,9 @@ typedef struct {
     int    spacing;      /* ticks between one enemy and the next */
 } Flight;
 
-/* Entries, one set of five flights each, cycled by stage.
- *
- * The arcade shuffles how a wave assembles rather than replaying one
- * choreography forever, and the entry is the part of a stage a player watches
- * without being able to do much about - which is exactly the part that goes
- * stale first. Four sets, drawn from four path shapes and their mirrors, with
- * their own cadences: the interval between flights and the gap between enemies
- * inside one change the rhythm as much as the curves change the shape.
- *
- * The first set is the original, so stage one still opens the way it always
- * did. Whatever a player learns the game by should not be the variation. */
+/* Four entry sets of five flights each, cycled by ordinary stage. Cadence
+   varies as much as the curves do. Set 0 is the original, so stage one always
+   opens the same way. */
 #define ENTRY_SETS 4
 
 static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
@@ -211,27 +183,12 @@ static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
 
 #define ENTRY_SPEED  2.6f    /* pixels per tick along an entry or return path */
 
-/* The difficulty ramp.
+/* The difficulty ramp. Each pair is stage 1 and the far end; stages between
+   interpolate, past RAMP_STAGES sits at the hard end.
  *
- * Each pair below is stage 1 and the far end of the ramp; a stage in between
- * gets a straight interpolation, and everything past RAMP_STAGES sits at the
- * hard end.
- *
- * The cap is a ceiling, not a driver, and measuring said so: raising it alone
- * changed nothing at all, because a dive lasts about 150 ticks and the stage-1
- * interval is 105, so the screen held two attacks however high the cap was set.
- * What actually fills the screen is the burst below. Over stages 1, 8 and 20
- * the peak goes 2, 3, 4 groups and the dives per 6000 ticks go 65, 158, 209.
- *
- * Worth being straight about: at those numbers the cap is never reached, so it
- * currently does nothing. It is kept as a bound on the burst rather than
- * deleted - the burst length is the knob most likely to be turned up next, and
- * this is what stops the dive-path pool running dry being the thing that
- * decides what happens when it is.
- *
- * The entry speed deliberately does not ramp. The entry is the part of a stage
- * the player only watches, and speeding it up shortens the pause before the
- * shooting starts rather than making anything harder. */
+ * The cap is a bound on the burst, not a driver - it is never actually reached,
+ * because a dive lasts ~150 ticks and the burst below is what fills the screen.
+ * Entry speed does not ramp: the entry is watched, not played. */
 #define RAMP_STAGES  12
 
 #define ATTACK_INTERVAL      105    /* ticks between attacks, stage 1  */
@@ -246,43 +203,27 @@ static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
 #define SWAY_PERIOD_1     420.0f    /* ticks for one full sway cycle   */
 #define SWAY_PERIOD_END   240.0f
 
-/* Extra attacks tacked on to one attack event, and how far apart they come.
+/* Bursts change the shape of the pressure rather than the rate: two or three
+   attacks together, then a gap.
  *
- * Shortening the interval far enough to fill the screen would leave no lulls at
- * all, so bursts change the shape rather than the rate: two or three attacks
- * arriving close together and then a gap, which is both harder to dodge and
- * easier to read than a metronome.
- *
- * The gap between them is the whole ballgame, and it was measured rather than
- * guessed. Attacks launched close together fly close together, and max_convoy
- * swept across stages 2 to 24 puts numbers on it: at a gap of 16 the worst pair
- * flew together for 27 ticks and two stages crossed the convoying line; at 22,
- * 18 ticks and none; at 24, 9 ticks; at 28, 3. The jump from 22 to 24 is the
- * cheap one - the worst case halves for about a tenth of the dive count - and
- * beyond that a burst starts spanning longer than the interval that follows it,
- * which is an evenly spaced stream with extra steps. */
+ * The gap is measured, not guessed - at 16 the worst pair convoys for 27 ticks,
+ * at 24 for 9. Past about 28 a burst outlasts the interval after it, which is
+ * an even stream with extra steps. */
 #define BURST_LEN_END   3
 #define BURST_GAP      24
 
-/* How close two dive groups have to be, and for how long, to count as
-   travelling together rather than merely crossing. A dive covers three to four
-   pixels a tick, so two groups on different curves are through each other in a
-   handful of ticks; twenty is far past anything a crossing produces. Only the
-   distance is enforced - the tick count is the line the reported figure is
-   read against. */
+/* How close two dive groups must be, and for how long, to count as travelling
+   together rather than crossing. Only the distance is enforced; the tick count
+   is the line the reported figure is read against. */
 #define CONVOY_DIST  14.0f
 #define CONVOY_TICKS 20
 
-/* How much faster the last bonus round flies than the first. Small: a bonus
-   stage is a shooting gallery rather than a threat, so this is about keeping
-   the pattern readable while giving less time to read it. */
+/* How much faster the last bonus round flies than the first. Small - a bonus
+   stage is a shooting gallery, not a threat. */
 #define CHAL_SPEED_RAMP 0.30f
 
-/* A flat trim on every bonus round. They were authored too fast to read - a
-   bonus stage is meant to reward knowing the pattern, and there was not enough
-   time on screen to learn one. Kept separate from the per-round speeds below
-   so that table still says how the rounds differ from one another rather than
-   what the whole lot was last tuned to. */
+/* A flat trim on every bonus round; they were authored too fast to read. Kept
+   out of the per-round table so that still says how the rounds differ. */
 #define CHAL_SPEED_TRIM 0.75f
 
 /* How far the parked block drifts either side of its slots. Unlike everything
@@ -312,32 +253,21 @@ static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
 
 /* Missiles. Divers shoot on the way down; a parked enemy never does.
 
-   Aim is deliberately not a straight line to the fighter. The fighter is
-   pinned to one row and can only move along it, so a missile arriving flat
-   along that row cannot be dodged at all - and an enemy that has swooped down
-   level with it was firing almost exactly that. Two rules keep a shot fair:
-   the enemy has to be some way above the fighter to take one, and the aim is
-   clamped into a cone about straight down, so there is always enough downward
-   travel to step aside from. */
+   Aim is not a straight line to the fighter. It can only move along its row,
+   so a missile arriving flat along that row cannot be dodged. Two rules: the
+   shooter must be some way above, and the aim is clamped into a cone about
+   straight down. */
 #define ENEMY_SHOT_SPEED  2.3f
-/* How much less often an enemy flying into formation shoots than one
-   attacking. Not a small number: an entry puts forty enemies across the screen
-   in eleven seconds, so matching the dive rate would be a wall of fire during
-   the one stretch a player is only watching. Nothing at all shoots on the way
-   in during stage one - the first wave is where the game is learnt. */
+/* How much less often an enemy flying in shoots than one attacking. An entry
+   puts forty enemies on screen in eleven seconds, so the dive rate would be a
+   wall of fire. Nothing shoots on the way in during stage one. */
 #define ENTRY_FIRE_RATIO 5
 
 #define FIRE_CHANCE_IN    150     /* per diving enemy, per tick, stage 1 */
 #define FIRE_CHANCE_IN_END 68     /* and at the far end of the ramp      */
-/* The least warning a missile is allowed to give, in ticks, and the height
-   that works out to.
- *
- * Writing the height directly was the mistake: 44 pixels sounds like clearance
- * and is not. A shot covers ENEMY_SHOT_SPEED pixels a tick, so 44 of them is
- * nineteen ticks - under a third of a second - between a missile appearing and
- * arriving, which is roughly a person's reaction time and leaves nothing for
- * moving afterwards. The number that matters is the time, so the time is what
- * is written and the height is derived from it. */
+/* The least warning a missile may give. Written as time and the height derived
+   from it: 44px sounds like clearance but is 19 ticks, about a person's
+   reaction time with nothing left for moving afterwards. */
 #define FIRE_MIN_WARNING  28.0f
 #define FIRE_MIN_HEIGHT   (ENEMY_SHOT_SPEED * FIRE_MIN_WARNING)
 #define FIRE_MAX_SLOPE    1.0f    /* |dx| <= dy: 45 degrees from straight down */
@@ -361,11 +291,8 @@ static bool is_boss(ShapeId s);
 #define BEAM_BOT_HW  26.0f
 #define BEAM_BANDS   16
 
-/* How far down the screen the boss hangs while the beam is open. The pair of
-   numbers has to be chosen together: hover plus length must actually reach
-   PLAYER_Y or the beam cannot catch anything, which is exactly what the first
-   attempt got wrong - it stopped eighty pixels short of the fighter's row and
-   no capture was possible at all. */
+/* How far down the boss hangs while the beam is open. Chosen with BEAM_LEN:
+   hover plus length must reach PLAYER_Y or nothing can ever be caught. */
 #define BEAM_HOVER_Y 146
 
 /* How far the beam has opened, 0 to 1. */
@@ -428,21 +355,13 @@ int wave_captive_holder(const Wave *w)
     return w->captive_holder;
 }
 
-/* Where a captured fighter rides relative to its captor: directly above it, in
- * screen space, always - parked, entering, or diving.
+/* A captured fighter rides directly above its captor in screen space, always -
+ * parked, entering or diving. Screen space rather than rotated with the boss is
+ * what makes it read as "above" rather than "behind the nose".
  *
- * Screen-space rather than rotated with the boss, which is what makes it read
- * as "above" and not "behind the nose". A boss diving is travelling down the
- * screen, so above is behind it, and the pair descends as a vertical column
- * with the stolen fighter trailing - which is what the arcade does.
- *
- * This offset also decides who can be shot. Screen y grows downward, so a shot
- * climbing from the fighter's row meets the larger y first: the boss is between
- * the player and the captive the whole way, and a straight shot up the column
- * frees the fighter rather than destroying it. Losing it is what happens when
- * the two are not lined up with you - which is most of the time, since they are
- * moving. An earlier version had this backwards and pushed the captive out to
- * the side while diving to "open the shot"; the shot was never closed. */
+ * It also decides who can be shot. Screen y grows downward, so a shot climbing
+ * from the fighter's row meets the boss first: the boss shields the captive,
+ * and a straight shot up the column frees it rather than destroying it. */
 #define CAPTIVE_ABOVE 15.0f
 
 static Vec2 captive_offset(const Enemy *e)
@@ -502,34 +421,15 @@ static int rng_below(Wave *w, int n)
 
 /* ------------------------------------------------------------ dive paths */
 
-/* An attack, built where the enemy is rather than from a fixed template: it
-   peels out of the slot, curls over, and sweeps down across the player before
-   leaving the bottom of the screen. `side` decides which way it breaks, and
-   aiming the lower half at the player's column is what stops a wave of dives
-   from tracing the same line every time. */
-/* The attack curves.
+/* The attack curves. All four are built from the leader's parked position, the
+ * side it breaks towards and the fighter's column, and all four end below the
+ * screen, which hands the enemy to the return lane. Which one an enemy flies is
+ * chosen per attack, not per stage.
  *
- * Every dive used to be one shape - rise out, curl over, fall away, swing in
- * past the fighter - mirrored by side and aimed at wherever the player was.
- * Placement varied and character never did, which over a whole game reads as a
- * formula rather than as an attack. There are four now, and which one an
- * enemy flies is chosen per attack rather than per stage: variety inside a
- * stage is the point, and picking once a stage would only have moved the
- * sameness up a level.
- *
- * All four are built from the leader's parked position, the side it breaks
- * towards and the fighter's column, and all four end below the bottom of the
- * screen, which is what hands the enemy to the return lane.
- *
- * They deliberately leave by different doors. The first version had every
- * shape hook back to almost the same point - the loop exited at player_x - 6s
- * and the plunge at player_x - 4s, two pixels apart - and that turned out to
- * matter: with one shape, two groups were separated along the curve by the
- * time between their launches, but four shapes take four different times to
- * reach the tail, which destroys that separation and lands them on the shared
- * exit together. It measured as half a second of two groups flying as one. The
- * pass at the fighter is what makes a dive dangerous; where it leaves
- * afterwards is free, so the exits are spread. */
+ * They leave by deliberately different doors. Four shapes take four different
+ * times to reach the tail, so the separation that launch timing gives two
+ * groups is gone by then; a shared exit put them on top of each other for half
+ * a second. The pass at the fighter is what matters, so the exits are spread. */
 typedef enum {
     DIVE_PEEL,     /* the original: out, over, and down across the screen */
     DIVE_LOOP,     /* a tight loop on the way out, then a run at the player */
@@ -538,9 +438,8 @@ typedef enum {
     DIVE_SHAPES
 } DiveShape;
 
-/* Keeps a control point far enough inside the screen that a curve drawn round
-   it is still something the player can see happen. Only the deliberately wide
-   points are clamped; the rest are near the formation already. */
+/* Keeps a deliberately wide control point far enough inside the screen that
+   the curve round it is still visible. */
 static float on_screen(float x)
 {
     const float M = 26.0f;
@@ -549,93 +448,56 @@ static float on_screen(float x)
     return x;
 }
 
-/* The approach every attack curve makes once it is near the fighter, and the
-   one rule all four of them have to obey.
+/* The approach every attack curve makes near the fighter, and the rule all four
+ * obey: a dive may come down through the fighter, but may not turn along its row
+ * and come at it sideways faster than PLAYER_SPEED, because then there is
+ * nowhere to go.
  *
- * A dive is allowed to come down through the fighter - watching one drop on you
- * is the game. What it may not do is turn along the fighter's row and come at
- * it sideways, because there is then nowhere to go: the fighter makes
- * PLAYER_SPEED a tick and cannot outrun a dive at DIVE_SPEED_END.
+ * A curve lines up AIM_LEAD_UP above its aim, with the width of the screen to do
+ * it in. From the aim down it may drift sideways by only AIM_SLOPE of its drop.
+ * The four points are spaced so the Catmull-Rom tangents at the aim and at the
+ * fighter's row are both exactly AIM_SLOPE - equal tangents on a straight chord
+ * give a straight segment, so the stretch crossing the fighter is a line at a
+ * known angle rather than whatever a spline decided. `with_lead` is for a curve
+ * that arrives lined up under its own steam.
  *
- * All four curves used to do exactly that, for the same reason. Each one ended
- * with a control point sitting on the player's column, and the point before it
- * was wherever that curve happened to have got to - so the further the fighter
- * stood from that, the flatter and faster the closing leg became. From a corner
- * the loop's was ten across for one down: a bee that turned and flew horizontally
- * into the fighter at nearly three times the speed it could move.
- *
- * The lining-up therefore happens AIM_LEAD_UP above the aim - between 44 and 68
- * pixels clear of the fighter's row - with the whole width of the screen still
- * available to do it in and the fighter below watching it happen. From the aim
- * down, the curve may only drift sideways by AIM_SLOPE of its drop, which is
- * PLAYER_SPEED over DIVE_SPEED_END: the definition, in one ratio, of "the
- * fighter can still get out of the way".
- *
- * The points are spaced so that the Catmull-Rom tangents at the aim and at the
- * fighter's row both come out at exactly AIM_SLOPE. Equal tangents on a straight
- * chord give a straight segment, so the stretch that actually crosses the
- * fighter is a line at a known angle rather than something a spline decided.
- * `with_lead` is for a curve that has already arrived lined up under its own
- * steam and does not need the extra point.
- *
- * Measured over 12 stages and 8 seeds, before and after: the fastest an attack
- * crosses the fighter's row sideways went from 4.3 px/tick, which is the whole
- * dive speed and means dead horizontal, to 1.5 against the fighter's 1.6. */
-/* How far either side of the fighter's row still counts as level with it. A
-   little wider than the radius that kills, so a shave counts too. */
+ * Sideways speed across the row, before and after: 4.3 px/tick - the whole dive
+ * speed, i.e. dead horizontal - down to 1.5, against the fighter's 1.6. */
+/* How far either side of the row counts as level with the fighter. A little
+   wider than the radius that kills, so a shave counts. */
 #define FIGHTER_BAND 12.0f
 
 #define AIM_LEAD_UP  20.0f    /* how far above the aim a curve lines up   */
 #define AIM_Y_MIN    216.0f   /* the highest a curve commits to its line  */
 #define AIM_Y_VARY   24       /* and how much lower it may happen instead */
-/* The ceiling on those two is not a free choice. Everything from the aim down
-   is a straight line at a known angle, but the leg that lines up on it is not:
-   its tangent still points back at wherever the curve came from, so it can be
-   as flat as it likes. That leg has to finish before the fighter's band starts.
-   Letting the aim reach 252 put the end of it exactly on the band's top edge,
-   and the sideways figure went straight back over the limit to 1.9. */
+/* Not a free choice. The lining-up leg is the one part of the tail whose
+   tangent still points back at wherever the curve came from, so it can be as
+   flat as it likes and must finish before the fighter's band starts. */
 typedef char aim_lines_up_above_the_band[
     (AIM_Y_MIN + AIM_Y_VARY <= PLAYER_Y - FIGHTER_BAND) ? 1 : -1];
 #define AIM_EXIT_Y   340.0f
 
-/* How much of the rule to apply, as a multiple of "the fighter can outrun it".
-   At 1.0 an attack crossing the fighter's row can never travel sideways faster
-   than the fighter does, so there is always somewhere to go. Raising it was
-   measured rather than assumed, in case the rule was costing more than it was
-   worth: at 2.0 the curves are freer and the convoy figure improves by about
-   one tick in fifteen, which is nothing set against giving up the guarantee.
-   It stays at 1.0. The knob is here so that a difficulty pass can weaken this
-   deliberately and know exactly what it is weakening. */
+/* The rule as a multiple of "the fighter can outrun it". At 1.0 an attack can
+   never cross the row sideways faster than the fighter moves. Relaxing it to
+   2.0 buys about one convoy tick in fifteen, which is not worth the guarantee;
+   the knob exists so a difficulty pass can weaken this knowingly. */
 #define AIM_TILT     1.00f
 #define AIM_SLOPE    (AIM_TILT * PLAYER_SPEED / DIVE_SPEED_END)
 
-/* Where an attack aims relative to the fighter, how hard it slants on the way
- * past, and at what height it commits. Drawn once per launch.
+/* Where an attack aims, how hard it slants past, and the height it commits at.
+ * Drawn per launch to keep attacks apart, because a shared approach is a funnel.
+ * Ablated over 576 runs: each is worth about two convoy ticks and none is
+ * decisive; they are kept because they are nearly free.
  *
- * These three exist to keep attacks apart, because a shared approach is a
- * funnel and the convoy check said so as soon as one was introduced. All three
- * were then ablated over the same 576 runs rather than argued about, and the
- * result is worth writing down plainly: each is worth roughly two ticks of the
- * convoy figure above the approach, and none of them is decisive. Turning any
- * one off moves the number from 10 to 12; the mean overall barely moves at all.
- * They are kept because they are nearly free and they all point the same way,
- * not because any of them solved it.
- *
- * What did not work is more interesting. The first attempt was a handful of
- * fixed lanes, and widening them from 11px to 21px barely moved anything: the
- * pairs that convoy are the ones that drew the same lane, and five lanes across
- * four curves collide constantly once a stage is busy. Quantising was the
- * mistake, so the offset is drawn from a pixel-wide range instead.
- *
- * Missing the fighter is correct, not a side effect. An attack that always ends
- * on its exact column is one it has to move for every single time, which is the
- * opposite of giving it somewhere to go. */
+ * Drawn from a pixel-wide range rather than a few fixed lanes - the pairs that
+ * convoy are the ones that drew the same lane, so quantising was the mistake.
+ * Missing the fighter is correct: an attack that always ends on its exact
+ * column is one it has to move for every time. */
 #define AIM_SPREAD    20      /* pixels either side of the fighter        */
 
-/* Where each curve aims, as an offset from the fighter towards the side it
-   broke to. Ordered loop, cross, plunge, peel across that axis and spaced wider
-   than the distance the convoy check calls flying together, so two attacks in
-   the air at once are held apart by construction rather than by luck. */
+/* Each curve's aim, offset from the fighter towards the side it broke to.
+   Ordered loop, cross, plunge, peel and spaced wider than the convoy distance,
+   so two attacks are held apart by construction rather than luck. */
 #define AIM_OUTER     26.0f
 #define AIM_INNER      9.0f
 #define AIM_SLANT_MIN 0.35f   /* share of AIM_SLOPE; 1.0 is the full tilt */
@@ -650,17 +512,14 @@ static Aim aim_pick(Wave *w)
     a.slant = AIM_SLANT_MIN + (1.0f - AIM_SLANT_MIN)
                             * (float)rng_below(w, AIM_SLANTS)
                             / (float)(AIM_SLANTS - 1);
-    /* The altitude a curve commits at. Marginally the most useful of the
-       three, and free to do: the tangents come out at AIM_SLOPE because the
-       four points of the approach are collinear, and they are collinear
-       whatever the spacing between them, so this can move without weakening
-       anything below it. */
+    /* Free to vary: the approach's four points are collinear whatever the
+       spacing between them, so the tangents still come out at AIM_SLOPE. */
     a.y     = AIM_Y_MIN + (float)rng_below(w, AIM_Y_VARY + 1);
     return a;
 }
 
-/* Clamped less tightly than on_screen does it: the spread is the whole point
-   and an edge that folded it back together would undo this. */
+/* Clamped less tightly than on_screen: an edge that folded the spread back
+   together would undo it. */
 static float aim_column(float player_x, float bias, Aim aim)
 {
     const float M = 14.0f;
@@ -676,22 +535,12 @@ static float aim_lead_x(float x, float sweep)
     return x - sweep * AIM_SLOPE * AIM_LEAD_UP;
 }
 
-/* A curve's own shape runs from the formation down to wherever this particular
-   attack lines up, and that varies. Two wrong answers came before this one.
- *
- * Pulling every body up to a constant height to make room for the approach
- * squeezed all four shapes into the top 170px of a 288px screen, and the
- * traffic up there crowded accordingly: convoying above the approach went from
- * 8 ticks to 12, the same fault as down below and entirely self-inflicted.
- *
- * Clipping the last point instead gave the height back but kept each shape as
- * wide as it was drawn, and a manoeuvre that loses height without losing width
- * turns harder in the same arc. The sharpest turn on the cross went from 97
- * degrees per 12px of travel to 172 - a bee that stops dead and reverses.
- *
- * So the shape scales. Its points are placed as fractions of the room it has,
- * and its sideways excursions scale with the same factor, which keeps a squashed
- * dive the same manoeuvre rather than a tighter one. */
+/* A curve's body runs from the formation down to wherever this attack lines up,
+ * and that varies, so the shape scales to fit rather than being clipped to fit.
+ * Points are placed as fractions of the room available and sideways excursions
+ * scale by the same factor - a body that loses height but keeps its width turns
+ * harder in the same arc, which took the cross's sharpest corner from 97 degrees
+ * per 12px to 172: a bee that stops dead and reverses. */
 #define BODY_GAP   14.0f
 #define BODY_SPAN  124.0f   /* the height these shapes were drawn at */
 
@@ -752,27 +601,16 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         break;
 
     case DIVE_LOOP: {
-        /* A corkscrew: one full turn, descending the whole way through it.
+        /* A corkscrew: one full turn, descending the whole way through it. A
+         * closed circle would have to climb for half its length, so the descent
+         * D must be at least 2*pi*R for the vertical speed never to go negative.
+         * R is derived from D rather than chosen, which is what stops the shape
+         * coming out wrong for an enemy parked high or low.
          *
-         * This began as an actual closed circle and was wrong in a way worth
-         * recording. A circle has to climb for half of its length, so the exit
-         * had to leave from the top and drop back down through the curve it had
-         * just flown - which read as the enemy curving round, hauling itself
-         * upwards, and then starting its attack over again. Plotting the
-         * sampled polyline made that obvious in about a second; reading the
-         * control points had not, twice.
-         *
-         * A turn descends without ever climbing only if it falls faster than
-         * the circle lifts. Going round once, the vertical speed is D + 2*pi*R
-         * times a sine, so the descent D has to be at least 2*pi*R for the sum
-         * never to go negative. R is set from D rather than chosen, with a
-         * little margin, which is what guarantees the shape cannot come out
-         * wrong for an enemy parked high or low in the formation. */
-        /* The turn is sized to finish exactly where this dive lines up, and its centre
-           slides across to the aim column as it goes round, so it comes out of
-           the last quarter already lined up. Spreading the sideways travel over
-           a whole revolution is what makes it a corkscrew leaning towards the
-           fighter rather than a loop followed by a sprint. */
+         * Sized to finish where this dive lines up, with the centre sliding
+         * across to the aim column as it goes round - sideways travel spread
+         * over a whole revolution is what makes it a corkscrew leaning at the
+         * fighter rather than a loop followed by a sprint. */
         float drop = lead - from.y;               /* room before the approach */
         if (drop < 60.0f) drop = 60.0f;
         float R  = drop / 9.0f;                   /* well clear of 2*pi, so it never lifts */
@@ -780,9 +618,8 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         float x1 = aim_lead_x(aim_column(player_x, -s * AIM_OUTER, aim), s * slant);
         float cy = from.y + R;                    /* the turn starts at `from` */
 
-        /* One turn, sampled at fifths. Even spacing matters here: two control
-           points a few pixels apart make the spline behave badly through them,
-           which is its own kind of stutter. */
+        /* One turn at fifths. Even spacing matters: control points a few pixels
+           apart make the spline stutter through them. */
         static const float SIN5[5] = { 0.951f,  0.588f, -0.588f, -0.951f,  0.0f };
         static const float COS5[5] = { 0.309f, -0.809f, -0.809f,  0.309f,  1.0f };
 
@@ -793,8 +630,7 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
             c[k + 1].x = cx + s * R * SIN5[k];
             c[k + 1].y = cy + t * drop - R * COS5[k];
         }
-        /* The turn's last point is the lined-up one, so the approach does not
-           need to add its own. */
+        /* The turn already ends lined up, so no lead point. */
         n = aim_tail(c, 6, aim_column(player_x, -s * AIM_OUTER, aim), s * slant,
                      aim.y, 0);
         break;
@@ -807,18 +643,14 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         c[1].x = from.x + s * 16.0f * scale;          c[1].y = from.y + 0.06f * span;
         c[2].x = on_screen(from.x + s * 52.0f * scale);
         c[2].y = from.y + 0.35f * span;
-        /* Reined in from 86/46 over 0.84 of the span. The turnaround at the
-           edge is the sharpest thing any of these curves does, and at the full
-           throw over a squashed span it was doubling back through 130 degrees
-           in twelve pixels of travel. */
+        /* The turnaround at the edge is the sharpest thing any of these curves
+           does; at a wider throw over a squashed span it doubled back through
+           130 degrees in twelve pixels. */
         c[3].x = on_screen(GAME_W * 0.5f + s * 74.0f * scale);
         c[3].y = from.y + 0.72f * span;
-        /* The screen is crossed well above the fighter now, not level with it.
-           Both of these used to be fixed - the same x from a constant, the same
-           y from a constant - so every cross ever flown passed through one of
-           two points and they funnelled. It was in nine of the eleven worst
-           convoying pairs. Carrying a share of the launching slot through keeps
-           the shape and separates the traffic. */
+        /* Carries a share of the launching slot through. Fixed here, every
+           cross ever flown passed through the same point and they funnelled -
+           nine of the eleven worst convoying pairs. */
         c[4].x = on_screen(GAME_W * 0.5f - s * 40.0f * scale
                            + (from.x - GAME_W * 0.5f) * 0.30f);
         c[4].y = from.y + span;
@@ -833,11 +665,9 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         c[1].x = from.x + s * 7.0f * scale;   c[1].y = from.y + 0.13f * span;
         c[2].x = from.x + s * 2.0f * scale;   c[2].y = from.y + 0.52f * span;
         c[3].x = from.x - s * 10.0f * scale;  c[3].y = from.y + span;
-        /* The hook stays on the side the plunge broke towards rather than
-           cutting back across. Crossing over made it run head-on through the
-           loop's approach, which comes the other way - two attacks arriving on
-           the fighter from opposite sides met in the middle and travelled as
-           one for better than half a second. Parallel, they pass. */
+        /* The hook stays on the side the plunge broke towards. Cutting back
+           across ran it head-on into the loop's approach, which comes the other
+           way; parallel, they pass. */
         n = aim_tail(c, 4, aim_column(player_x, s * AIM_INNER, aim), s * slant,
                      aim.y, 1);
         break;
@@ -854,8 +684,7 @@ static int dive_path_alloc(Wave *w)
     return -1;
 }
 
-/* Called by each enemy as it finishes; the path goes back to the pool when the
-   last of the group is off it. */
+/* The path returns to the pool when the last of its group is off it. */
 static void dive_path_release(Wave *w, int i)
 {
     if (i >= 0 && i < MAX_DIVERS && w->dive_refs[i] > 0) --w->dive_refs[i];
@@ -900,9 +729,8 @@ void wave_init(Wave *w)
     wave_restart(w, 1, 0);
 }
 
-/* Works the stage number into the handful of numbers that describe how hard a
-   wave is. Done once per stage rather than per tick, so a stage's character is
-   fixed the moment it starts and cannot drift under it. */
+/* Once per stage rather than per tick, so a stage's character is fixed when it
+   starts and cannot drift under it. */
 static void set_difficulty(Wave *w, int stage)
 {
     if (stage < 1) stage = 1;
@@ -932,10 +760,8 @@ static void set_difficulty(Wave *w, int stage)
     w->sway_period     = SWAY_PERIOD_1 + (SWAY_PERIOD_END - SWAY_PERIOD_1) * t;
 }
 
-/* How many dive groups are in the air. A boss and its escorts share one path
-   and count once between them, which is the unit the cap is written in: three
-   groups is three attacks to dodge whether that is three bees or three full
-   escorted bosses. */
+/* A boss and its escorts share one path and count once - the unit the cap is
+   written in, since three groups is three attacks to dodge either way. */
 static int dive_groups(const Wave *w)
 {
     int n = 0;
@@ -943,12 +769,9 @@ static int dive_groups(const Wave *w)
     return n;
 }
 
-/* A formation slot with the block's sway applied. formation_slot_pos gives a
-   slot's home, which is what something aiming for the formation wants;
-   anything that has to actually be at the slot wants this. Keeping the two
-   apart is what stops the sway from disturbing an arriving enemy: the join
-   curve is built in slot space and the offset added to its output, so the
-   curve does not have to be rebuilt as the block moves under it. */
+/* A slot with the block's sway applied; formation_slot_pos gives its home.
+   Keeping the two apart is what stops sway disturbing an arriving enemy - the
+   join curve is built in slot space and the offset added to its output. */
 static Vec2 slot_pos(const Wave *w, int slot)
 {
     Vec2 v = formation_slot_pos(slot);
@@ -983,9 +806,8 @@ static void wave_reset_common(Wave *w)
     for (int i = 0; i < MAX_DIVERS; ++i) w->dive_refs[i] = 0;
     for (int i = 0; i < PATH_COUNT; ++i)  w->lane_free[i] = 0;
     for (int i = 0; i < MAX_ENEMY_SHOTS; ++i) w->shot[i].alive = false;
-    /* Chosen by the caller and settled before this runs. It comes from the
-       stage rather than the generator, so a given stage always assembles the
-       same way - a pattern nobody can rely on is not a pattern to learn. */
+    /* From the stage rather than the generator, so a given stage always
+       assembles the same way. */
     int set = w->entry_set;
 
     for (int i = 0; i < MAX_ENEMIES; ++i) {
@@ -1191,9 +1013,8 @@ static bool is_boss(ShapeId s)
     return s == SHP_BOSS;
 }
 
-/* Sends the next attack. A boss is preferred when one is parked, because a
-   boss dive drags two butterflies down with it and that is the formation's
-   signature attack; otherwise anything still sitting there will do. */
+/* Sends the next attack, preferring a parked boss - a boss dive drags two
+   butterflies with it, which is the formation's signature attack. */
 enum { TYPE_BOSS, TYPE_BUTTERFLY, TYPE_BEE, TYPE_COUNT };
 
 static int type_of(ShapeId s)
@@ -1208,18 +1029,15 @@ static void launch_attack(Wave *w, float player_x)
     int ready[TYPE_COUNT][MAX_ENEMIES];
     int n[TYPE_COUNT] = { 0, 0, 0 };
 
-    /* Inside a burst, only the far half of the formation is in the running. A
-       dive breaks towards its nearer edge, so two leaders parked on the same
-       side fly near-identical curves - which measurably put two groups
-       convoying for around half a second. Choosing across the middle makes
-       them diverge by construction, without overriding the break rule or
-       moving a single control point.
+    /* Inside a burst, only the far half of the formation is in the running.
+       A dive breaks towards its nearer edge, so two leaders on the same side
+       fly near-identical curves; alternating makes them diverge by
+       construction.
 
-       The filter has to come before the type is chosen rather than after.
-       Picking the type first and then looking for a member on the far side
-       means a burst that lands on the bosses - four of them, often all on one
-       side - finds nobody and falls straight back to the near half, which is
-       exactly the case that convoys.
+       The filter has to come before the type is chosen. Picking the type first
+       and then looking for a member on the far side means a burst landing on
+       the bosses - four of them, often all one side - finds nobody and falls
+       back to the near half, which is exactly the case that convoys.
 
        Straight about what this is worth: the burst gap alone already clears
        the convoying line, and without this the worst pair over stages 2 to 24
@@ -1244,14 +1062,10 @@ static void launch_attack(Wave *w, float player_x)
     }
     if (n[0] + n[1] + n[2] == 0) return;
 
-    /* Share of attacks each type leads. Choosing a type first, then a member
-       of it, is what keeps the bottom of the formation involved: picking
-       uniformly from every parked enemy means any one of the twenty bees
-       almost never gets a turn, and preferring a boss outright is worse still,
-       because with four of them one is nearly always available. Weighted this
-       way, and counting the two butterflies an escorted boss drags down with
-       it, an individual boss ends up attacking about twice as often as an
-       individual bee - a skew in the right direction rather than a rout. */
+    /* Share of attacks each type leads. Choosing a type first, then a member,
+       is what keeps the bottom of the formation involved - picking uniformly
+       from every parked enemy means any one of the twenty bees rarely gets a
+       turn. As weighted, a boss attacks about twice as often as a bee. */
     static const int WEIGHT[TYPE_COUNT] = { 20, 30, 50 };
 
     int pool = 0;
@@ -1288,9 +1102,8 @@ static void launch_attack(Wave *w, float player_x)
         return;
     }
 
-    /* As busy as this stage is allowed to get. The attack is dropped rather
-       than queued: holding it would mean a burst the moment a group landed,
-       which is a spike where the ramp wants a steady rate. */
+    /* Dropped rather than queued: holding it would fire a burst the moment a
+       group landed, which is a spike where the ramp wants a rate. */
     if (dive_groups(w) >= w->diver_cap) return;
 
     int p = dive_path_alloc(w);
@@ -1306,21 +1119,17 @@ static void launch_attack(Wave *w, float player_x)
                     aim_pick(w));
     if (shape >= 0 && shape < DIVE_SHAPES) ++w->dives_by_shape[shape];
 
-    /* One swoop for the group rather than one per enemy. A boss and its two
-       escorts leave on the same tick, so three copies would arrive perfectly
-       together and simply be the same sound at three times the volume. The
-       overlap worth having comes from separate attacks: a burst launches them
-       24 ticks apart, which is what puts several swoops in the air slightly
-       out of step with each other. */
+    /* One swoop per group, not per enemy: a trio leaves on the same tick, so
+       three copies would just be one sound at three times the volume. The
+       overlap worth having comes from separate attacks a burst apart. */
     audio_play(SFX_DIVE);
 
     join_dive(w, leader, p, 0.0f, 0.0f);
     if (type != TYPE_BOSS) return;
 
-    /* Escorts: the two parked butterflies nearest the boss's column, so the
-       trio that dives together also looked like a group standing still. They
-       take station ahead of the boss and to either side - the boss flies at
-       the trailing apex of the triangle, not at its point. */
+    /* The two parked butterflies nearest the boss's column, so the trio that
+       dives together also looked like one standing still. They take station
+       ahead and to either side - the boss is the trailing apex. */
     float bx = leader->pos.x;
     for (int slot = 0; slot < 2; ++slot) {
         int   best = -1;
@@ -1341,9 +1150,8 @@ static void launch_attack(Wave *w, float player_x)
 static void track_lane_gap(Wave *w);
 static void track_convoys(Wave *w);
 
-/* How many of a boss's escorts are still flying its path. The arcade pays more
-   for a boss killed with its escort intact, and because a group shares one dive
-   path, counting them is just a matter of asking who else is on it. */
+/* The arcade pays more for a boss killed with its escort intact, and a group
+   shares one dive path, so counting them is asking who else is on it. */
 static int escorts_on(const Wave *w, int path_idx)
 {
     if (path_idx < 0) return 0;
@@ -1407,8 +1215,8 @@ bool wave_hit(Wave *w, int index, int *score, int *popup)
         e->dive_path = -1;
     }
 
-    /* Shooting the boss that took your fighter is what gives it back. The
-       game notices by watching the holder across the call. */
+    /* Shooting the captor gives the fighter back; the game notices by watching
+       the holder across the call. */
     if (e->has_captive) {
         e->has_captive = false;
         w->captive_holder = -1;
@@ -1448,26 +1256,19 @@ static void enemy_fire(Wave *w, const Enemy *e, float player_x)
         float deg = (float)(atan2(fabs((double)dx), (double)dy) * 180.0 / M_PI);
         if (deg > w->shot_max_deg) w->shot_max_deg = deg;
 
-        /* Down here rather than at the top of the function: the aim rules
-           above turn plenty of would-be shots away, and a sound for a missile
-           that was never fired is a sound with nothing on screen to explain
-           it. */
+        /* After the aim rules, not before: they turn plenty of would-be shots
+           away, and a sound with no missile has nothing to explain it. */
         ++w->shots_fired;
         audio_play(SFX_ENEMY_FIRE);
         return;
     }
 }
 
-/* Takes an enemy off whatever it is doing and queues it for the return lane
-   on its own side. Used both when a dive runs out at the bottom of the screen
-   and when the whole wave is recalled.
-
-   Queueing rather than joining the lane straight away matters: a boss and its
-   escorts finish within a few ticks of each other - the escorts share a station
-   and so finish on the very same tick - and starting them all at the head of
-   the same path put them exactly on top of one another the whole way back. A
-   departure slot spaces them out, and does it for any two enemies that happen
-   to coincide. Waiting happens off-screen, where nothing is drawn. */
+/* Queues an enemy for the return lane on its own side, whether its dive ran
+   out or the whole wave was recalled. Queued rather than joined immediately:
+   escorts share a station and finish on the same tick, so all three entered the
+   lane on top of each other. A departure slot spaces out any such coincidence,
+   and the waiting happens off-screen. */
 /* An enemy that has run out of entry path joins from where the path ended,
    still flying the way the path was going. */
 static void begin_join(Enemy *e, const Path *p)
@@ -1639,18 +1440,16 @@ void wave_update(Wave *w, float player_x)
             e->join_t += e->join_rate;
             if (e->join_t > 1.0f) e->join_t = 1.0f;
 
-            /* Ease out only: the curve is entered at flight speed and slows to
-               rest at the slot. u'(0) = 2 and u'(1) = 0, which is why the rate
-               below is set against twice the curve's length. */
+            /* Ease out only - entered at flight speed, at rest at the slot.
+               u'(0) = 2, hence the rate set against twice the length. */
             float u = e->join_t * (2.0f - e->join_t);
 
             e->pos = hermite_point(e->join_p0, e->join_t0,
                                    e->join_p1, e->join_t1, u);
 
-            /* Heading comes from the curve's own tangent, so the enemy points
-               where it is travelling for the whole approach instead of turning
-               independently of it. At u = 1 the tangent is join_t1, which is
-               due north - it arrives already sitting the way it will park. */
+            /* Heading from the curve's own tangent, so it points where it is
+               going. At u = 1 that is join_t1, due north: it arrives already
+               sitting the way it will park. */
             Vec2 tan = hermite_tangent(e->join_p0, e->join_t0,
                                        e->join_p1, e->join_t1, u);
             e->heading = heading_from_vec(tan.x, tan.y);
@@ -1824,19 +1623,14 @@ void wave_print_stats(const Wave *w)
         printf("entry set: %d of %d\n", w->entry_set, ENTRY_SETS);
     }
 
-    /* Everything above holds whether or not anyone has attacked yet, so it is
-       printed first. A short run measured over an entry has no dives in it by
-       definition, and the numbers that describe an entry were once behind the
-       early return below - which made the one case they exist for the one case
-       that would not print them. */
+    /* Printed before the early return below: a run short enough to measure an
+       entry has no dives in it, and the entry numbers are the point of it. */
     printf("missiles fired: %d total, %d of them on the way in\n",
            w->shots_fired, w->shots_on_entry);
     printf("steepest missile fired: %.1f deg off straight down (90 = undodgeable)\n",
            w->shot_max_deg);
     {
-        /* Worst case is a shot fired from the minimum height, straight down:
-           the shortest possible flight, and the one the fighter has least time
-           to escape. It has to move clear of the missile's radius. */
+        /* Worst case: fired from the minimum height, straight down. */
         float ticks = FIRE_MIN_HEIGHT / ENEMY_SHOT_SPEED;
         printf("  the shortest warning a missile can give is %.0f ticks "
                "(%.2fs), in which the fighter can move %.0f px\n",
@@ -1893,18 +1687,10 @@ static bool on_camera(Vec2 p)
     return p.y > -CELL && p.y < (float)GAME_H && p.x > -CELL && p.x < GAME_W + CELL;
 }
 
-/* Tracks, for every pair of dive groups in the air, how long they have been
-   close. Within a group the escorts are meant to fly close to their boss, so
-   only enemies on different dive paths are compared.
-
-   Only while both are on screen. This measures whether two attacks read as one
-   smear, and two sprites overlapping below the bottom edge do not read as
-   anything. Leaving it out mattered: giving the dives four shapes instead of
-   one sent this metric from 0 ticks to 45 and looked like a bad regression,
-   when every one of those overlaps was happening at y 310 to 322 - twenty to
-   thirty pixels past the bottom of a 288-pixel screen, on the tails of curves
-   that had already left. The dives were fine. The measurement was counting
-   things nobody could see. */
+/* How long each pair of dive groups has been close. Escorts are meant to fly
+   close to their boss, so only different dive paths are compared, and only
+   while both are on screen - this measures whether two attacks read as one
+   smear, and sprites overlapping below the bottom edge read as nothing. */
 static void track_convoys(Wave *w)
 {
     float best[MAX_DIVERS][MAX_DIVERS];
@@ -2008,10 +1794,8 @@ bool wave_settled(const Wave *w)
     for (int i = 0; i < MAX_ENEMIES; ++i) {
         const Enemy *e = &w->enemies[i];
 
-        /* Anything on its way home counts as unsettled even while it waits
-           its turn in the lane queue. Otherwise a board looks quiet with half
-           its divers still parked off the top, and they arrive later looking
-           like enemies from nowhere. */
+        /* Anything on its way home counts as unsettled even while queued, or
+           a board looks quiet with divers still parked off the top. */
         if (e->returning && e->state != ENEMY_DEAD) return false;
 
         switch (e->state) {
@@ -2054,11 +1838,9 @@ float wave_entry_clearance(const Wave *w, int *worst_path, float *offscreen_low)
             float d = fabsf(q.y - (float)PLAYER_Y);
             if (d < worst) { worst = d; which = p; }
 
-            /* And how far down anything gets while it is still off the side of
-               the screen, which is the shape of the complaint: an enemy that
-               is created out there and flies in along the fighter's row is not
-               a thing anybody can dodge, because the first they see of it is
-               the collision. */
+            /* And how far down anything gets while still off the side: an
+               enemy that flies in along the fighter's row cannot be dodged,
+               because the first you see of it is the collision. */
             if ((q.x < 0.0f || q.x > (float)GAME_W) && q.y > low) low = q.y;
         }
     }
@@ -2174,9 +1956,8 @@ void wave_draw(Gfx *g, const Wave *w)
         const Enemy *e = &w->enemies[i];
         if (e->state == ENEMY_WAITING || e->state == ENEMY_DEAD) continue;
 
-        /* A whisker along each enemy's heading. The flyers are near enough to
-           symmetric that facing backwards looks much like facing forwards, so
-           this is the quickest way to confirm they point where they fly. */
+        /* A whisker along each heading. The flyers are near enough symmetric
+           that backwards looks like forwards without it. */
         if (w->show_paths) {
             float rad = e->heading * (float)M_PI / 180.0f;
             SDL_SetRenderDrawColor(g->renderer, 255, 255, 0, 255);
@@ -2194,10 +1975,8 @@ void wave_draw(Gfx *g, const Wave *w)
         float scale   = 1.0f;
 
         if (e->state == ENEMY_FORMED) {
-            /* Parked enemies sit upright and breathe. The sheet did this by
-               alternating two drawn poses; with one shape that can turn and
-               scale freely, a slow pulse reads as the same thing and needs no
-               second drawing. */
+            /* Parked enemies sit upright and breathe. The arcade alternated
+               two poses; a slow pulse reads the same with one shape. */
             heading = HEADING_N;
             scale   = 1.0f + 0.07f * sinf((float)(w->tick + i * 7) * 0.09f);
         }
@@ -2223,10 +2002,9 @@ const char *wave_dive_name(int shape)
 
 float wave_dive_sideways(const Wave *w, int *worst_shape)
 {
-    /* The corners of the problem rather than every case: the top and bottom
-       rows of the formation, its two edges and its middle, the fighter against
-       either wall and in the centre, and both break directions. A curve that
-       behaves at all of those behaves. */
+    /* The corners of the problem rather than every case: top and bottom rows,
+       both edges and the middle, the fighter at either wall and centre, both
+       break directions. A curve that behaves at all of those behaves. */
     static const float FROM_Y[]   = { (float)FORM_Y,
                                       (float)(FORM_Y + (FORM_ROWS - 1) * FORM_PITCH) };
     static const float FROM_X[]   = { (float)FORM_X, GAME_W * 0.5f,
@@ -2256,9 +2034,8 @@ float wave_dive_sideways(const Wave *w, int *worst_shape)
         for (int i = 1; i < p.n; ++i) {
             if (fabsf(p.pt[i].y - (float)PLAYER_Y) > FIGHTER_BAND) continue;
 
-            /* Samples are evenly spaced by arc length, so the sideways share
-               of a step is the sideways share of the speed. Measured at the
-               hardest stage's dive speed, which is the case that has to hold. */
+            /* Evenly spaced by arc length, so the sideways share of a step is
+               the sideways share of the speed. At the hardest dive speed. */
             float dx   = p.pt[i].x - p.pt[i - 1].x;
             float dy   = p.pt[i].y - p.pt[i - 1].y;
             float step = sqrtf(dx * dx + dy * dy);
@@ -2275,11 +2052,9 @@ float wave_dive_sideways(const Wave *w, int *worst_shape)
 
 void wave_dump_dives(void)
 {
-    /* Every knob that changes the shape, so the picture shows the family rather
-       than one member of it: three slots across and down the formation, both
-       break directions, and the two ends of the altitude the approach commits
-       at. Reading control points has now twice failed to catch a curve that
-       doubled back; plotting the sampled polyline caught both in seconds. */
+    /* Every knob that changes the shape, so the picture shows the family
+       rather than one member. Reading control points has twice failed to catch
+       a curve that doubled back; plotting the polyline caught both. */
     static const Vec2  FROM[]  = { { 56.0f, 44.0f }, { 104.0f, 76.0f },
                                    { 168.0f, 108.0f } };
     static const float AIM_Y[] = { AIM_Y_MIN, AIM_Y_MIN + AIM_Y_VARY };

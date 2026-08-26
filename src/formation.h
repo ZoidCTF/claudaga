@@ -5,15 +5,11 @@
 #include "shape.h"
 #include "path.h"
 
-/* The attack wave: how it assembles, and how it attacks.
- *
- * Forty enemies fill a 10x5 grid, but they do not start there. They arrive in
- * five flights of eight, each flight split into two streams that enter from
- * opposite sides and fly a scripted curve before peeling off into their slot.
- * Once the wave is assembled they begin diving at the player, and a dive ends
- * by re-entering from the top and rejoining formation - which is the same
- * problem as the original entry, so it reuses the same state and the same
- * join curve rather than inventing a second way home. */
+/* The attack wave. Forty enemies fill a 10x5 grid but arrive in five flights
+ * of eight, each split into two streams entering from opposite sides on a
+ * scripted curve before peeling into their slot. A dive ends by re-entering
+ * from the top and rejoining - the same problem as the original entry, so it
+ * reuses the same state and join curve rather than a second way home. */
 
 #define FORM_COLS   10
 #define FORM_ROWS   5
@@ -318,16 +314,10 @@ void wave_print_stats(const Wave *w);
 /* Debug: builds each attack curve and prints its sampled polyline. */
 void wave_dump_dives(void);
 
-/* The fastest an attack curve travels sideways while it is level with the
-   fighter, in pixels per tick, taken over every row it can start from, every
-   column the fighter can stand in, and both sides it can break towards.
- *
- * A dive is allowed through the fighter's row - watching one come down at you
- * is the game. What it may not do is turn along that row and come at the
- * fighter faster than the fighter can move, because then there is nowhere to
- * go: it makes PLAYER_SPEED a tick and cannot outrun anything quicker.
- *
- * `worst_shape` receives which curve was responsible. */
+/* The fastest an attack travels sideways while level with the fighter, over
+   every row it can start from, column the fighter can stand in, and both break
+   directions. A dive may come down through the fighter, but not along its row
+   faster than PLAYER_SPEED - there would be nowhere to go. */
 float wave_dive_sideways(const Wave *w, int *worst_shape);
 const char *wave_dive_name(int shape);
 

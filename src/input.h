@@ -5,20 +5,14 @@
 
 #include <SDL.h>
 
-/* Keyboard and game controllers, merged.
+/* Keyboard and game controllers, merged. The game reads three booleans and
+ * this is the only file that knows where they came from, which is also what
+ * lets the headless harness fill the struct in directly.
  *
- * The game does not read a keyboard. It reads three booleans, and this file is
- * the only thing that knows where they came from - which is what stops "and
- * now the same for a controller" from meaning a second `if` beside every
- * existing one. It is also what lets the headless harness drive the game by
- * filling in the struct directly instead of forging a scancode array.
- *
- * Two kinds of input live here and they are not interchangeable. Flying is
- * sampled: what matters is whether left is held right now. Menus are
- * edge-triggered: holding a direction should move the cursor once, not sixty
- * times a second. The keyboard gets its edges free from SDL_KEYDOWN, but a
- * stick pushed to one side is a level rather than an event, so those edges
- * have to be manufactured - which is what the queue below is for. */
+ * Two kinds of input, not interchangeable. Flying is sampled - is left held
+ * now. Menus are edge-triggered - holding a direction moves the cursor once,
+ * not sixty times a second. SDL_KEYDOWN gives the keyboard those edges free,
+ * but a stick held to one side is a level, so the queue below makes them. */
 
 typedef struct {
     bool left, right;   /* held */
