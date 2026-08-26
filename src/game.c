@@ -183,6 +183,7 @@ void game_init(Game *g)
 {
     memset(g, 0, sizeof *g);
     g->first_stage  = 1;
+    g->always_dual  = false;
     g->other_score  = -1;
     wave_init(&g->wave);
     stars_init();
@@ -208,7 +209,7 @@ void game_restart(Game *g)
 
     g->player.x        = GAME_W / 2.0f;
     g->player.alive    = true;
-    g->player.dual     = false;
+    g->player.dual     = g->always_dual;
     g->player.lives    = START_LIVES;
     g->player.respawn  = 0;
     g->player.captured = false;
@@ -786,6 +787,9 @@ void game_update(Game *g, const Input *in)
             && !fx_player_blast_active(&g->fx)
             && wave_area_clear(&g->wave, spot, SPAWN_CLEAR_RADIUS)) {
             g->player.alive = true;
+            g->player.dual  = g->always_dual;
+            if (g->trace && g->player.dual)
+                printf("tick %d: fighter launched paired\n", g->tick);
             g->player.x     = spot.x;
 
             /* Attacks wait for the formation to be whole again, the same way

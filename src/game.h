@@ -75,6 +75,7 @@ typedef struct {
     /* Which stage a run begins on. Always 1 in play; --stage sets it so a
        later stage's difficulty can be measured without playing up to it. */
     int    first_stage;
+    bool   always_dual;   /* every fighter launches paired, for testing */
     int    tick;
     int    stage_clear;   /* ticks left on the pause between stages */
     int    game_over;     /* ticks left on the game over message */

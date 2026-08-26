@@ -632,7 +632,7 @@ static void usage(void)
             "                [--trace] [--shot out.bmp] [--stats N]\n"
             "                [--stage N] [--mute] [--padtest] [--options]\n"
             "                [--audiotest [DIR]] [--paused] [--divedump] [--demo]\n"
-            "                [--players 1|2] [--seed N]\n"
+            "                [--players 1|2] [--seed N] [--dual]\n"
             "\n"
             "the game starts by default; the view flags select a tool instead\n");
 }
@@ -837,6 +837,7 @@ int main(int argc, char **argv)
     const char *audiodir  = NULL;
     bool        audioreport = false;
     bool        autofire  = false;
+    bool        always_dual = false;
     bool        trace     = false;
 
     for (int i = 1; i < argc; ++i) {
@@ -851,6 +852,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--stats")   && i + 1 < argc)  stats = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--seed")    && i + 1 < argc)  wave_set_seed((unsigned)atoi(argv[++i]));
         else if (!strcmp(argv[i], "--stage")   && i + 1 < argc)  first_stage = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--dual"))                     always_dual = true;
         else if (!strcmp(argv[i], "--paths"))                    paths = true;
         else if (!strcmp(argv[i], "--observe"))                  observe = true;
         else if (!strcmp(argv[i], "--autofire"))                 autofire = true;
@@ -956,7 +958,17 @@ int main(int argc, char **argv)
     /* Starting later is a measurement tool rather than a cheat: the difficulty
        ramp only shows itself over a dozen stages, and playing up to stage 12 to
        check a number is not a test anybody runs twice. */
-    if (first_stage > 1) {
+    /* A paired fighter is otherwise only reachable by letting a boss take one
+       and then shooting the boss, which is a lot of play to set up a two-hull
+       test. Same standing as --stage: it starts you somewhere, it does not
+       change what happens once you are there.
+
+       Both have to be set before the restart that spawns the fighter, not
+       after it - set afterwards, the flag was there but the ship already on
+       screen had launched without it. */
+    for (int i = 0; i < SEATS; ++i) games[i].always_dual = always_dual;
+
+    if (first_stage > 1 || always_dual) {
         for (int i = 0; i < SEATS; ++i) {
             games[i].first_stage = first_stage;
             games[i].quiet = true;
