@@ -581,6 +581,11 @@ static int aim_tail(Vec2 *c, int n, float x, float sweep, float aim_y,
     return n;
 }
 
+/* How far either side of an escort's position the curve is sampled to decide
+   which way "sideways" points. Long enough to ignore a corner, short enough
+   that the offset is still square to the flight on a straight. */
+#define DIVE_BANK 24.0f
+
 static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
                             int shape, Aim aim)
 {
@@ -800,6 +805,9 @@ static void wave_reset_common(Wave *w)
     w->shot_max_deg = 0.0f;
     w->peak_divers  = 0;
     w->max_convoy   = 0;
+    w->max_step      = 0.0f;
+    w->max_accel     = 0.0f;
+    w->max_accel_state = 0;
     w->max_convoy_high = 0;
     w->shots_fired  = 0;
     w->shots_on_entry = 0;
@@ -844,6 +852,13 @@ static void wave_reset_common(Wave *w)
         e->beam_t       = 0;
         e->has_captive  = false;
         e->returning    = false;
+
+        /* Only a bonus round moves a lane sideways, and only for as long as
+           that round lasts. Left set, it was still being added to the entry
+           paths of every ordinary stage that followed - which is why the fly-in
+           went wrong from stage 8 on, the first ordinary stage after a round
+           whose lanes are not all at zero. */
+        e->lane_dx      = 0.0f;
     }
 }
 
@@ -1059,10 +1074,21 @@ int wave_challenge_hits(const Wave *w)
    its formation slot. Split out from begin_join below because two quite
    different things need it: an enemy reaching the end of an entry path, and a
    Boss Galaga that has just shut its tractor beam and wants to go home. */
-static void begin_join_at(Enemy *e, Vec2 end, float exit)
+/* `block` is where the parked formation currently sits relative to its slots.
+ *
+ * The whole curve is built in slot space, because that is the space its far end
+ * lives in - formation_slot_pos gives a slot's home, and the block's offset is
+ * added when the position is drawn. The near end arrives in screen space, so it
+ * has the offset taken off it here. Without that the first tick of a join put
+ * the enemy a whole sway width from where the entry path had just left it: a
+ * visible sideways snap, on every enemy, on every stage. */
+static void begin_join_at(Enemy *e, Vec2 end, float exit, Vec2 block)
 {
     float rad    = exit * (float)M_PI / 180.0f;
     Vec2 target  = formation_slot_pos(e->slot);
+
+    end.x -= block.x;
+    end.y -= block.y;
 
     float dx   = target.x - end.x;
     float dy   = target.y - end.y;
@@ -1076,12 +1102,17 @@ static void begin_join_at(Enemy *e, Vec2 end, float exit)
     e->join_t1.x = 0.0f;                /* arrive heading due north */
     e->join_t1.y = -pull;
 
-    /* Time the approach by its actual length so every enemy crosses at the
-       same speed no matter how far its slot is, entering at flight speed and
-       decelerating to a stop. The factor of two pairs with the ease-out above,
-       whose starting slope is 2. */
-    float len = hermite_length(e->join_p0, e->join_t0, e->join_p1, e->join_t1);
-    float ticks = (2.0f * len) / e->speed;
+    /* Enter the curve at exactly the speed the path was flown at, and
+       decelerate to a stop.
+     *
+     * A cubic Hermite leaves p0 at |t0| per unit of u, and the ease-out doubles
+       that at u=0, so the opening speed is 2 * rate * pull and the rate follows
+       from wanting it to equal e->speed. Timing it by the curve's length
+       instead - which is what this did - only gets the average right: the join
+       opened at pull/len times flight speed, and since pull is a chord scaled
+       up and len is the arc it bends through, that was consistently about
+       double. Every enemy lurched as it left the entry path. */
+    float ticks = (2.0f * pull) / e->speed;
     if (ticks < 1.0f) ticks = 1.0f;
 
     e->join_rate = 1.0f / ticks;
@@ -1265,6 +1296,47 @@ static void track_lane_gap(Wave *w);
 static void track_convoys(Wave *w);
 static bool on_camera(Vec2 p);
 
+/* Watches for movement that is not movement.
+ *
+ * Only while an enemy is on screen at both ends of the tick: a diver that runs
+ * off the bottom and comes back round the top really does jump, and it does it
+ * where nobody is looking. Everything else walks a curve at a known speed, so a
+ * step much above the dive speed means some transition handed the next state a
+ * position the last one was not actually at. */
+static void track_smoothness(Wave *w)
+{
+    for (int i = 0; i < MAX_ENEMIES; ++i) {
+        Enemy *e = &w->enemies[i];
+        bool seen = (e->state != ENEMY_DEAD && e->state != ENEMY_WAITING
+                     && on_camera(e->pos));
+
+        float step = 0.0f;
+        if (seen && e->was_seen) {
+            float dx = e->pos.x - e->last_pos.x;
+            float dy = e->pos.y - e->last_pos.y;
+            step = sqrtf(dx * dx + dy * dy);
+
+            if (step > w->max_step) w->max_step = step;
+
+            /* Only once there is a previous step to compare against, and only
+               while the enemy stayed in one state - a change of state is
+               allowed to change speed, and some legitimately do. */
+            if (e->last_step > 0.0f && e->last_state == e->state) {
+                float accel = fabsf(step - e->last_step);
+                if (accel > w->max_accel) {
+                    w->max_accel       = accel;
+                    w->max_accel_state = e->state;
+                }
+            }
+        }
+
+        e->last_pos   = e->pos;
+        e->was_seen   = seen;
+        e->last_state = e->state;
+        e->last_step  = step;
+    }
+}
+
 /* What a bonus round actually put on screen, as opposed to what its schedule
    intended. Two groups at a time with a clear gap between pairs is the rule the
    arcade kept to, and the only way to know it holds across four patterns and a
@@ -1417,11 +1489,6 @@ static void enemy_fire(Wave *w, const Enemy *e, float player_x)
    and the waiting happens off-screen. */
 /* An enemy that has run out of entry path joins from where the path ended,
    still flying the way the path was going. */
-static void begin_join(Enemy *e, const Path *p)
-{
-    begin_join_at(e, path_point(p, p->length), path_heading(p, p->length));
-}
-
 static void send_home(Wave *w, Enemy *e)
 {
     if (e->dive_path >= 0) {
@@ -1467,7 +1534,8 @@ void wave_recall_except(Wave *w, int keep)
                 e->dive_path = -1;
             }
             e->speed = ENTRY_SPEED;
-            begin_join_at(e, e->pos, e->heading);
+            { Vec2 block = { w->sway, w->lift };
+                 begin_join_at(e, e->pos, e->heading, block); }
         }
     }
     wave_clear_shots(w);
@@ -1567,7 +1635,16 @@ void wave_update(Wave *w, float player_x)
                    and that is the end of it - nothing forms up, and anything
                    not shot on the way through simply escapes. */
                 if (w->challenge) e->state = ENEMY_DEAD;
-                else              begin_join(e, p);
+                else {
+                    /* From where the enemy actually is, not from where the path
+                       ends: a tick lands it short and the next takes it past, so
+                       at the moment of joining it is up to a full tick behind the
+                       final point. Starting at that point made the first tick of
+                       the join cover its own step plus the remainder - about
+                       double, on every enemy, on every entry. */
+                    Vec2 block = { w->sway, w->lift };
+                    begin_join_at(e, e->pos, e->heading, block);
+                }
             } else {
                 e->pos     = path_point(p, e->s);
                 e->pos.x  += e->lane_dx;
@@ -1655,7 +1732,8 @@ void wave_update(Wave *w, float player_x)
                     e->dive_path = -1;
                 }
                 e->speed = ENTRY_SPEED;
-                begin_join_at(e, e->pos, e->heading);
+                { Vec2 block = { w->sway, w->lift };
+                 begin_join_at(e, e->pos, e->heading, block); }
             }
             break;
         }
@@ -1677,9 +1755,25 @@ void wave_update(Wave *w, float player_x)
                 float h    = path_heading(dp, path_s);
 
                 /* Offset sideways along the path's normal, so the triangle
-                   banks with the flight instead of staying axis-aligned. */
+                   banks with the flight instead of staying axis-aligned.
+                 *
+                 * Taken across a span of the curve rather than from the tangent
+                 * at a point. An escort sits 17px off its boss, so on a tight
+                 * turn the tangent swings fast enough to sweep that offset
+                 * further in one tick than the dive travels - the escort visibly
+                 * whips around the outside. A chord is the same direction on a
+                 * straight and a far steadier one through a corner. */
                 if (e->dive_lateral != 0.0f) {
-                    float rad = h * (float)M_PI / 180.0f;
+                    float a = path_s - DIVE_BANK;
+                    float b = path_s + DIVE_BANK;
+                    if (a < 0.0f)         a = 0.0f;
+                    if (b > dp->length)   b = dp->length;
+
+                    Vec2  pa  = path_point(dp, a);
+                    Vec2  pb  = path_point(dp, b);
+                    float bh  = heading_from_vec(pb.x - pa.x, pb.y - pa.y);
+                    float rad = bh * (float)M_PI / 180.0f;
+
                     here.x += cosf(rad) * e->dive_lateral;
                     here.y += sinf(rad) * e->dive_lateral;
                 }
@@ -1715,6 +1809,7 @@ void wave_update(Wave *w, float player_x)
     track_lane_gap(w);
     track_convoys(w);
     if (w->challenge) track_challenge(w);
+    track_smoothness(w);
 
     if (wave_track && w->challenge) {
         for (int i = 0; i < MAX_ENEMIES; ++i) {
@@ -1746,6 +1841,14 @@ void wave_print_stats(const Wave *w)
     printf("peak dive groups in the air at once: %d (cap %d)\n",
            w->peak_divers, w->diver_cap);
     static const char *SHAPE[4] = { "peel", "loop", "cross", "plunge" };
+    {
+        static const char *ST[] = { "waiting", "entering", "to slot", "formed",
+                                    "diving", "beaming", "dead" };
+        printf("movement: fastest %.1f px/tick, sharpest change of speed %.1f "
+               "while %s%s\n",
+               w->max_step, w->max_accel, ST[w->max_accel_state & 7],
+               w->max_accel > w->dive_speed ? "   <-- that is a jump" : "");
+    }
     printf("longest two dive groups flew together: %d ticks (%d = convoying)\n",
            w->max_convoy, CONVOY_TICKS);
     printf("  of which above the approach, where there is no excuse: %d ticks\n",

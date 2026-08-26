@@ -44,6 +44,10 @@ typedef struct {
     float      s;            /* distance travelled along the path */
     float      speed;
     float      lane_dx;   /* lateral offset of this flyer's lane, bonus rounds */
+    Vec2       last_pos;  /* where it was last tick, for the smoothness check   */
+    bool       was_seen;
+    int        last_state;
+    float      last_step;
     Vec2       pos;
     float      heading;
 
@@ -166,6 +170,19 @@ typedef struct {
     bool  challenge;
     int   challenge_hits;
     int   chal_variant;      /* which of the four patterns this round is  */
+
+    /* How much an enemy's speed changed from one tick to the next, at worst,
+       while it was on screen.
+     *
+     * Speed alone does not separate a bug from the geometry. An escort rides
+     * 17px off its boss, so on the inside of a tight turn it barely moves and
+     * on the outside it travels two or three times as far - fast, and correct.
+     * What no curve walked at a steady rate can do is change speed abruptly, so
+     * that is what is measured: a teleport shows up as a step that appears from
+     * nothing and is gone the next tick. */
+    float max_accel;
+    int   max_accel_state;
+    float max_step;          /* and the fastest anything moved, for context */
     int   chal_peak_groups;  /* most groups on screen at once, this round   */
     int   chal_peak_flyers;  /* and most individual flyers                  */
     int   chal_quiet;        /* longest stretch with an empty screen        */
