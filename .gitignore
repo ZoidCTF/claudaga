@@ -7,3 +7,6 @@ dist/
 # Something on the NAS share keeps regenerating these beside edited files.
 # Not ours, and one turned up with a corrupted line in it.
 Working Copy of *
+
+# Windows Explorer thumbnail cache, appears wherever a folder gets browsed.
+Thumbs.db
