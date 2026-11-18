@@ -1,0 +1,180 @@
+/* Every number a tuning pass might want to turn, in one table.
+ *
+ *   TUNE_I(NAME, default, min, max, "what it is")     an int
+ *   TUNE_F(NAME, default, min, max, "what it is")     a float
+ *   TUNE_SECTION("heading")                           groups the written file
+ *
+ * Each becomes a field `tune.NAME`, and a line `NAME = value` in tuning.cfg
+ * overrides it (see tuning.h). The range is the edge of what the code
+ * survives - dividing by it, sizing a loop by it - not the edge of good
+ * taste; rules between two values are checked in tuning.c and formation.c.
+ * The defaults are the shipped game: with no file, nothing changes.
+ *
+ * Constants that size an array, define what a metric measures, or describe
+ * authored geometry stay #defines where they are used. */
+
+TUNE_SECTION("the fighter")
+/* Shared with the wave because the rules deciding when an enemy may fire are
+   written in terms of how far the fighter could get out of the way. */
+TUNE_F(PLAYER_SPEED,   1.6f,  0.1f, 8.0f,  "pixels per tick along the row")
+/* A wave that sends enemies past faster than this cannot be cleared however
+   well it is played, so the bonus schedules are checked against it. */
+TUNE_I(FIRE_COOLDOWN,  12,    1, 600,      "ticks between shots")
+TUNE_F(SHOT_SPEED,     4.0f,  0.5f, 32.0f, "pixels per tick a shot climbs")
+/* Missing costs real time - a shot must clear the top before its slot frees -
+   which is where most of the difficulty comes from. A dual fighter is allowed
+   twice as many, which is most of what makes rescuing one worth doing. */
+TUNE_I(SHOTS_SINGLE,   2,     1, MAX_SHOTS, "shots in the air at once")
+TUNE_I(SHOTS_DUAL,     4,     1, MAX_SHOTS, "and for a paired fighter")
+TUNE_F(DUAL_OFFSET,    8.0f,  0.0f, 16.0f, "each hull's distance from the pair's centre")
+TUNE_I(START_LIVES,    3,     1, 99,       "fighters at the start of a game")
+TUNE_I(RESPAWN_TICKS,  70,    1, 6000,     "ticks before a lost fighter comes back")
+/* The recall sends divers home, but one already near the bottom takes a moment
+   to leave, and reappearing inside it costs the next life straight away. */
+TUNE_F(SPAWN_CLEAR_RADIUS, 34.0f, 0.0f, 288.0f, "room the fighter needs before it returns")
+/* The arcade's default schedule: 20,000, then 70,000, then every 70,000. */
+TUNE_I(FIRST_EXTRA_LIFE, 20000, 1, 100000000, "score for the first extra fighter")
+TUNE_I(EXTRA_LIFE_EVERY, 70000, 1, 100000000, "then one every this many")
+
+TUNE_SECTION("collision")
+/* Distance tests, not boxes. The art inside a 16x16 cell is smaller than the
+   cell, so all of these are tighter than half a sprite - the arcade is famously
+   forgiving about near misses. */
+TUNE_F(ENEMY_HIT_RADIUS,  7.0f, 0.0f, 32.0f, "how close a shot must pass an enemy's centre")
+/* The entry paths are checked against this one too, so it has one definition. */
+TUNE_F(ENEMY_SHIP_RADIUS, 9.0f, 0.0f, 32.0f, "how close an enemy's body kills the fighter")
+TUNE_F(R_MISSILE_SHIP,    8.0f, 0.0f, 32.0f, "how close a missile kills the fighter")
+
+TUNE_SECTION("the difficulty ramp")
+/* Each pair is stage 1 and the far end; stages between interpolate, and past
+   RAMP_STAGES everything sits at the hard end.
+ *
+ * The diver cap is a bound on the burst, not a driver - it is never actually
+ * reached, because a dive lasts ~150 ticks and the burst is what fills the
+ * screen. Entry speed does not ramp: the entry is watched, not played. */
+TUNE_I(RAMP_STAGES,         12,     1, 1000,   "stages from the easy end to the hard end")
+TUNE_I(ATTACK_INTERVAL,     105,    1, 6000,   "ticks between attacks, stage 1")
+TUNE_I(ATTACK_INTERVAL_END, 44,     1, 6000,   "and at the hard end")
+TUNE_F(DIVE_SPEED_1,        3.1f,   0.1f, 16.0f, "pixels per tick down a dive, stage 1")
+TUNE_F(DIVE_SPEED_END,      4.3f,   0.1f, 16.0f, "and at the hard end")
+TUNE_I(DIVER_CAP_1,         3,      1, MAX_DIVERS, "dive groups in the air at once, stage 1")
+TUNE_I(DIVER_CAP_END,       MAX_DIVERS, 1, MAX_DIVERS, "and at the hard end")
+TUNE_F(SWAY_PERIOD_1,       420.0f, 1.0f, 100000.0f, "ticks for one sway of the parked block, stage 1")
+TUNE_F(SWAY_PERIOD_END,     240.0f, 1.0f, 100000.0f, "and at the hard end")
+/* Bursts change the shape of the pressure rather than the rate: two or three
+   attacks together, then a gap. The gap is measured - at 16 the worst pair
+   convoys for 27 ticks, at 24 for 9. Past about 28 a burst outlasts the
+   interval after it, which is an even stream with extra steps. */
+TUNE_I(BURST_LEN_END,       3,      0, 100,    "attacks per burst at the hard end")
+TUNE_I(BURST_GAP,           24,     0, 6000,   "ticks between attacks inside a burst")
+
+TUNE_SECTION("the formation")
+TUNE_F(ENTRY_SPEED,    2.6f,  0.1f, 16.0f, "pixels per tick along an entry or return path")
+/* The outer columns sit 40px from the screen edge and a sprite needs 8 of
+   that, so the amplitude is bounded by the screen; later stages sway faster
+   instead of wider. */
+TUNE_F(SWAY_AMP,       10.0f, 0.0f, 32.0f, "pixels the parked block drifts either side")
+/* At entry speed this works out around 50px of daylight. */
+TUNE_I(RETURN_SPACING, 20,    0, 6000,     "ticks between two enemies entering one return lane")
+/* The boss sits at the trailing apex. Both must clear a 16px sprite or the trio
+   reads as one blob: the lead separates escorts from boss, the spread
+   separates them from each other. */
+TUNE_F(ESCORT_LEAD,    21.0f, 0.0f, 64.0f, "how far along the path a boss's escorts ride ahead")
+TUNE_F(ESCORT_SPREAD,  17.0f, 0.0f, 64.0f, "and how far to either side")
+TUNE_F(LIFT_SPEED,     3.2f,  0.1f, 64.0f, "pixels per tick a board leaves or arrives")
+
+TUNE_SECTION("missiles")
+/* Divers shoot on the way down; a parked enemy never does. */
+TUNE_F(ENEMY_SHOT_SPEED,   2.3f, 0.1f, 16.0f, "pixels per tick a missile travels")
+TUNE_I(FIRE_CHANCE_IN,     150,  1, 100000,  "one in this many, per diver, per tick, stage 1")
+TUNE_I(FIRE_CHANCE_IN_END, 68,   1, 100000,  "and at the hard end")
+/* An entry puts forty enemies on screen in eleven seconds, so the dive rate
+   would be a wall of fire. Nothing shoots on the way in during stage one. */
+TUNE_I(ENTRY_FIRE_RATIO,   5,    1, 1000,    "how much less often an entering enemy shoots")
+/* Written as time, with the height derived from it: 44px sounds like clearance
+   but is 19 ticks, about a person's reaction time with nothing left for
+   moving afterwards. */
+TUNE_F(FIRE_MIN_WARNING,   28.0f, 0.0f, 600.0f, "least warning a missile gives, in ticks")
+TUNE_F(FIRE_MAX_SLOPE,     1.0f,  0.0f, 16.0f,  "aim cone: sideways per pixel down (1 = 45 degrees)")
+
+TUNE_SECTION("attack curves")
+/* AIM_TILT is the fairness rule as a multiple of "the fighter can outrun it":
+   at 1.0 an attack never crosses the row sideways faster than the fighter
+   moves. 2.0 buys about one convoy tick in fifteen, which is not worth the
+   guarantee; the knob exists so a difficulty pass can weaken it knowingly. */
+TUNE_F(AIM_TILT,      1.0f,   0.0f, 16.0f,  "sideways speed across the row, in fighter speeds")
+TUNE_F(AIM_LEAD_UP,   20.0f,  0.0f, 200.0f, "how far above its aim a curve lines up")
+TUNE_F(AIM_Y_MIN,     216.0f, 0.0f, 288.0f, "the highest a curve commits to its line")
+TUNE_I(AIM_Y_VARY,    24,     0, 288,       "and how much lower it may happen instead")
+/* Drawn per launch to keep attacks apart, because a shared approach is a
+   funnel. Ablated over 576 runs: each is worth about two convoy ticks and none
+   is decisive. Drawn from a pixel range rather than fixed lanes - the pairs
+   that convoy are the ones that drew the same lane. */
+TUNE_I(AIM_SPREAD,    20,     0, 112,       "pixels either side of the fighter an attack aims")
+/* Ordered loop, cross, plunge, peel and spaced wider than the convoy distance,
+   so two attacks are held apart by construction rather than luck. */
+TUNE_F(AIM_OUTER,     26.0f,  0.0f, 112.0f, "aim offset of the loop and the cross")
+TUNE_F(AIM_INNER,     9.0f,   0.0f, 112.0f, "aim offset of the plunge and the peel")
+TUNE_F(AIM_SLANT_MIN, 0.35f,  0.0f, 1.0f,   "gentlest slant, as a share of the full tilt")
+TUNE_I(AIM_SLANTS,    8,      2, 1000,      "slants to choose between")
+TUNE_F(BODY_GAP,      14.0f,  0.0f, 200.0f, "room between a curve's body and its line-up")
+
+TUNE_SECTION("the beam")
+/* A boss drops out of formation, hangs there with the beam open long enough to
+   be worth dodging or shooting, then shuts it and goes home. */
+TUNE_I(BEAM_DESCEND,  56,     1, 6000,      "ticks to drop into position")
+TUNE_I(BEAM_OPEN,     18,     1, 6000,      "ticks to open")
+TUNE_I(BEAM_HOLD,     96,     0, 6000,      "ticks held open")
+TUNE_I(BEAM_CLOSE,    18,     1, 6000,      "ticks to close")
+/* Hover plus length must reach the fighter's row or nothing can be caught. */
+TUNE_I(BEAM_HOVER_Y,  146,    0, 288,       "how far down the boss hangs")
+TUNE_F(BEAM_LEN,      122.0f, 1.0f, 288.0f, "length of the cone below the boss")
+TUNE_F(BEAM_TOP_HW,   5.0f,   0.0f, 112.0f, "half-width at the top")
+TUNE_F(BEAM_BOT_HW,   26.0f,  0.0f, 112.0f, "half-width at the bottom")
+TUNE_I(BEAM_BANDS,    16,     1, 256,       "bands drawn down the cone")
+/* Screen space rather than rotated with the boss is what makes it read as
+   "above" rather than "behind the nose"; a shot up the column meets the boss
+   first, so the boss shields its captive. */
+TUNE_F(CAPTIVE_ABOVE, 15.0f,  0.0f, 64.0f,  "how far above its captor a caught fighter rides")
+TUNE_F(CAPTURE_LIFT,  1.7f,   0.1f, 32.0f,  "pixels per tick a caught fighter is drawn up")
+TUNE_F(CAPTURE_SPIN,  9.0f,   0.0f, 360.0f, "degrees per tick it spins while taken")
+TUNE_F(RESCUE_SPEED,  2.1f,   0.1f, 32.0f,  "pixels per tick a freed fighter descends")
+/* Slower than steering, so it reads as the game taking over rather than input. */
+TUNE_F(RESCUE_CENTRE_SPEED, 1.4f, 0.1f, 32.0f, "pixels per tick the survivor walks to the middle")
+
+TUNE_SECTION("bonus rounds")
+/* Small - a bonus stage is a shooting gallery, not a threat. */
+TUNE_F(CHAL_SPEED_RAMP, 0.30f, 0.0f, 10.0f, "how much faster the last round flies than the first")
+/* They were authored too fast to read; kept out of the per-round table so that
+   still says how the rounds differ. */
+TUNE_F(CHAL_SPEED_TRIM, 0.75f, 0.05f, 10.0f, "flat speed trim on every round")
+/* The perfect bonus is worth far more than the hits, which is what makes a
+   bonus round a thing to be good at rather than a free forty shots. */
+TUNE_I(CHALLENGE_HIT_SCORE, 100,   0, 100000000, "points per flyer caught")
+TUNE_I(CHALLENGE_PERFECT,   10000, 0, 100000000, "points for catching every one")
+
+TUNE_SECTION("pacing")
+TUNE_I(STAGE_PAUSE,      120,  0, 6000,  "ticks between a cleared stage and the next")
+TUNE_I(GAME_OVER_TICKS,  240,  1, 6000,  "ticks GAME OVER holds")
+/* Long enough to read four lines without hurrying; fire cuts it short. */
+TUNE_I(RESULTS_TICKS,    420,  1, 6000,  "ticks the results screen holds")
+TUNE_I(EXTRA_MSG_TICKS,  120,  0, 6000,  "ticks the extra-fighter notice stays up")
+TUNE_I(HANDOVER_TICKS,   110,  0, 6000,  "ticks PLAYER N READY shows between turns")
+TUNE_I(IDLE_BEFORE_DEMO, 600,  1, 360000, "ticks of nobody home before the demo")
+TUNE_I(DEMO_LENGTH,      1500, 1, 360000, "ticks the demo plays for")
+
+TUNE_SECTION("effects")
+TUNE_I(ENEMY_BLAST_LIFE,  26, 1, 600, "ticks an enemy explosion lasts")
+TUNE_I(PLAYER_BLAST_LIFE, 42, 1, 600, "ticks the fighter's explosion lasts")
+TUNE_I(SCORE_LIFE,        90, 1, 600, "ticks a score popup lasts")
+TUNE_I(ENEMY_SHARDS,      11, 0, 64,  "shards in an enemy explosion")
+TUNE_I(PLAYER_SHARDS,     15, 0, 64,  "shards in the fighter's explosion")
+
+TUNE_SECTION("controllers")
+/* Out of 32767. A resting stick rarely reads zero, and without this the
+   fighter drifts on its own. */
+TUNE_I(STICK_DEADZONE, 9000,  0, 32767, "stick travel ignored around centre")
+/* The gap between the two stops a stick resting near the threshold from
+   chattering the cursor; a single threshold would do exactly that. */
+TUNE_I(MENU_PRESS,     18000, 1, 32767, "stick travel that counts as a menu press")
+TUNE_I(MENU_RELEASE,   9000,  0, 32767, "and where it must fall back to before the next")

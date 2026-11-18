@@ -26,6 +26,7 @@ static const SDL_Color YELLOW = { 255, 216,   0, 255 };
 static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color DIM    = { 144, 144, 160, 255 };
 static const SDL_Color PALE   = { 230, 230, 240, 255 };
+static const SDL_Color ALARM  = { 255,  72,  72, 255 };
 
 /* The tools are for building the game, not playing it, so a release carries no
    way in: Tab, F2, F3 and R do nothing and the title stops advertising them.
@@ -53,7 +54,6 @@ typedef enum { MENU_ONE, MENU_TWO, MENU_OPTIONS, MENU_QUIT, MENU_COUNT } MenuIte
  * turns means player two's formation is their own, at their own stage, waiting
  * as they left it. A seat that is out or finished is skipped. */
 #define SEATS 2
-#define HANDOVER_TICKS 110
 
 /* The longest to wait for a board to go quiet before packing it away anyway.
    A real settle measures 42 to 229 ticks, so reaching this means something is
@@ -150,7 +150,7 @@ static void session_begin(Session *s, int seats)
 static void session_hand_to(Session *s, int next)
 {
     s->turn     = next;
-    s->handover = HANDOVER_TICKS;
+    s->handover = tune.HANDOVER_TICKS;
     audio_play(SFX_STAGE);
 
     Game *g = &s->game[next];
@@ -332,13 +332,6 @@ static void session_tick(Session *s, const Input *in, bool to_title,
 }
 
 /* ---------------------------------------------------------------- demo */
-
-/* How long the title waits before showing the game off, and how long it shows
-   it for. An arcade cabinet alternated the two forever; the only difference
-   here is that the menu is a real menu, so the demo has to get out of the way
-   the moment anybody touches anything. */
-#define IDLE_BEFORE_DEMO 600     /* ten seconds of nobody home */
-#define DEMO_LENGTH     1500     /* twenty-five seconds of playing */
 
 /* The hands on the controls during a demo, and during a --at warm-up. One
    function so the game the harness measures and the game the attract screen
@@ -639,8 +632,11 @@ static void usage(void)
             "                [--audiotest [DIR]] [--paused] [--divedump] [--demo]\n"
             "                [--players 1|2] [--seed N] [--dual] [--chaltrack]\n"
             "                [--icon out.ico]\n"
+            "                [--tuning FILE] [--no-tuning] [--write-tuning FILE]\n"
             "\n"
-            "the game starts by default; the view flags select a tool instead\n");
+            "the game starts by default; the view flags select a tool instead\n"
+            "tunables are read from tuning.cfg in the working directory when it\n"
+            "exists, and reread whenever it changes\n");
 }
 
 /* The menu as actions rather than key handlers: the keyboard and a controller
@@ -798,7 +794,7 @@ static void ui_start_demo(Ui *u, Game *game)
     game->demo = false;      /* cleared first so the restart is a normal one */
     game_restart(game);
     game->demo = true;
-    u->demo    = DEMO_LENGTH;
+    u->demo    = tune.DEMO_LENGTH;
     u->view    = VIEW_DEMO;
     u->paused  = false;
     SDL_Log("attract: nobody home, showing the game off");
@@ -847,6 +843,9 @@ int main(int argc, char **argv)
     bool        autofire  = false;
     bool        always_dual = false;
     bool        trace     = false;
+    const char *tuning_file  = NULL;
+    bool        tuning_off   = false;
+    const char *tuning_out   = NULL;
 
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--shot") && i + 1 < argc)          shot_path = argv[++i];
@@ -878,9 +877,22 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--paused"))  { show_paused  = true; view_set = true; }
         else if (!strcmp(argv[i], "--demo"))    { show_demo    = true; view_set = true; }
         else if (!strcmp(argv[i], "--players") && i + 1 < argc) seats = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--tuning")  && i + 1 < argc) tuning_file = argv[++i];
+        else if (!strcmp(argv[i], "--no-tuning"))               tuning_off = true;
+        else if (!strcmp(argv[i], "--write-tuning") && i + 1 < argc) tuning_out = argv[++i];
         else { usage(); return 1; }
     }
     if (scale < 1) scale = 1;
+
+    if (tuning_out) return tuning_write_template(tuning_out) ? 0 : 1;
+
+    /* First, so every tool below - the self tests and dumps included - runs on
+       the values in force. A rejected file is fatal to a measurement, which
+       would otherwise report on the defaults while looking like a tuned run;
+       a person playing gets the defaults and the reason on screen. */
+    bool headless = shot_path || stats > 0 || divedump || padtest || audioreport;
+    bool tuning_ok = tuning_off || tuning_open(tuning_file);
+    if (!tuning_ok && headless) return 1;
 
     /* Fast-forwarding or measuring means the game, not the title: there is
        nothing to advance on a menu, and every capture would otherwise come
@@ -1064,7 +1076,25 @@ int main(int argc, char **argv)
        all, and settled nothing. */
     View shown     = VIEW_COUNT;
 
+    /* The tuning file is watched from here, a few times a second. The outcome
+       goes on screen because a release build has no console to read it in. */
+    Uint32 tuning_next   = 0;
+    Uint32 banner_until  = tuning_status()[0] ? SDL_GetTicks() + 4000 : 0;
+    bool   banner_alarm  = !tuning_ok;
+
     while (ui.running) {
+        if (!tuning_off && SDL_GetTicks() >= tuning_next) {
+            tuning_next = SDL_GetTicks() + 250;
+            int r = tuning_poll();
+            if (r > 0) {
+                for (int i = 0; i < SEATS; ++i) wave_retune(&games[i].wave);
+            }
+            if (r != 0) {
+                banner_until = SDL_GetTicks() + 4000;
+                banner_alarm = r < 0;
+            }
+        }
+
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             input_event(&ev);
@@ -1198,7 +1228,7 @@ int main(int argc, char **argv)
                    advertising. */
                 if (--ui.demo <= 0 || game->finished || game->results > 0) {
                     SDL_Log("attract: demo over after %d ticks%s",
-                            DEMO_LENGTH - ui.demo,
+                            tune.DEMO_LENGTH - ui.demo,
                             game->finished || game->results > 0 ? " (lost)" : "");
                     ui.demo    = 0;
                     ui.idle    = 0;
@@ -1213,7 +1243,7 @@ int main(int argc, char **argv)
                    the shape tools are places somebody is deliberately looking
                    at something. */
                 if (ui.view == VIEW_TITLE && !ui.options) {
-                    if (++ui.idle >= IDLE_BEFORE_DEMO) ui_start_demo(&ui, game);
+                    if (++ui.idle >= tune.IDLE_BEFORE_DEMO) ui_start_demo(&ui, game);
                 } else {
                     ui.idle = 0;
                 }
@@ -1252,6 +1282,24 @@ int main(int argc, char **argv)
                              GAME_H * 0.5f - 8.0f, YELLOW, m, 2.0f);
             const char *k = "P TO RESUME   ESC FOR MENU";
             font_draw(&g, (GAME_W - font_width(k)) / 2, GAME_H / 2 + 14, DIM, k);
+        }
+
+        /* Never in a screenshot: a capture is of the game, not of the tool. */
+        if (!shot_path && SDL_GetTicks() < banner_until) {
+            char msg[160];
+            snprintf(msg, sizeof msg, "%s", tuning_status());
+            char *second = strchr(msg, '\n');
+            if (second) *second++ = 0;
+            SDL_Color c = banner_alarm ? ALARM : YELLOW;
+            const char *lines[2] = { msg, second };
+            float top = ui.view == VIEW_PLAY ? 26.0f : 12.0f;   /* under the HUD, over the logo */
+            for (int l = 0; l < 2 && lines[l]; ++l) {
+                /* Long names make long errors; shrink a line rather than clip it. */
+                float w = font_width_scaled(lines[l], 1.0f);
+                float k = w > GAME_W - 8.0f ? (GAME_W - 8.0f) / w : 1.0f;
+                font_draw_scaled(&g, (GAME_W - w * k) * 0.5f, top + 10.0f * (float)l,
+                                 c, lines[l], k);
+            }
         }
 
         if (shot_path) {

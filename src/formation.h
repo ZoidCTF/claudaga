@@ -303,9 +303,6 @@ int wave_challenge_coverage(const Wave *w, int variant, float *best_x,
                             int *at_centre, bool dual);
 int  wave_challenge_hits(const Wave *w);
 
-/* What a bonus round pays: per flyer caught, and for catching all of them. */
-#define CHALLENGE_HIT_SCORE 100
-#define CHALLENGE_PERFECT   10000
 void wave_update(Wave *w, float player_x);
 void wave_draw(Gfx *g, const Wave *w);
 
@@ -416,18 +413,15 @@ void wave_clear_shots(Wave *w);
    value when the kill is one the arcade puts on screen, or 0 when it is not. */
 bool wave_hit(Wave *w, int index, int *score, int *popup);
 
-/* How close something has to be to an enemy's centre to count as a hit. The
-   art inside a 16x16 cell is smaller than the cell, so this is tighter than
-   half a sprite. */
-#define ENEMY_HIT_RADIUS 7.0f
-
-/* How close an enemy's body has to be to the fighter to kill it. Declared here
-   rather than beside the other collision radii because the entry paths are
-   checked against it, and a threshold with two definitions is a threshold that
-   will eventually have two values. */
-#define ENEMY_SHIP_RADIUS 9.0f
-
 /* Where a formation slot sits on screen. */
 Vec2 formation_slot_pos(int slot);
+
+/* The rules between tunables that the wave depends on, or NULL when `t` keeps
+   them all. Upper case: the message goes on screen. */
+const char *wave_tuning_check(const Tuning *t);
+
+/* Recomputes the current stage's ramp from the tunables in force, after they
+   have changed under a running game. */
+void wave_retune(Wave *w);
 
 #endif /* CLAUDAGA_FORMATION_H */

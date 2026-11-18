@@ -9,6 +9,9 @@ Updated 2026-08-26. Newest state first; trim entries that stop mattering.
   assets/audio/CREDITS.txt. All regression checks green; no TODOs in the tree.
 - Gameplay is considered tuned and fair by Zoid through the bonus rounds and
   the fly-in. One deliberate deferral remains (below).
+- **Tunables are runtime since 2026-11-18**: 80 former #defines live in
+  src/tuning.def, overridden by a hot-reloaded tuning.cfg. Meant to serve
+  open item 1 — tune live, then measure with --stats on the same file.
 
 ## Open items
 
@@ -68,7 +71,10 @@ Updated 2026-08-26. Newest state first; trim entries that stop mattering.
 `--stage N` start there (bonus = 3,7,11,15,...) · `--dual` paired fighter ·
 `--seed N` shift the wave RNG · `--stats N` run headless N ticks and report ·
 `--chaltrack` dump bonus flyer positions per tick · `--icon out.ico` ·
-`--players 2` · `--observe` invulnerable · `--trace` state transitions.
+`--players 2` · `--observe` invulnerable · `--trace` state transitions ·
+`--tuning F` / `--no-tuning` / `--write-tuning F` (runtime tunables, see
+src/tuning.def; a stray tuning.cfg in the cwd changes every run, and the run
+says so on its first lines).
 Scratch analysis scripts (solve/budget/measure) were session-local and are
 gone; the committed tool is tools/make_bonus_music.py. Rebuild analysis from
 --chaltrack dumps if needed.

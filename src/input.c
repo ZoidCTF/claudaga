@@ -1,4 +1,5 @@
 #include "input.h"
+#include "tuning.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -8,18 +9,6 @@
    drives the same fighter - there is no second player yet, so a second pad is
    simply another way to fly the first. */
 #define MAX_PADS 4
-
-/* Stick deadzone, out of 32767. A resting stick rarely reads zero, and without
-   this the fighter drifts on its own - which looks like the game moving by
-   itself rather than like a controller that needs recentring. */
-#define STICK_DEADZONE 9000
-
-/* Where the stick has to reach to count as a menu press, and where it has to
-   fall back to before it can count again. The gap between the two is what
-   stops a stick resting near the threshold from chattering the cursor up and
-   down; a single threshold would do exactly that. */
-#define MENU_PRESS   18000
-#define MENU_RELEASE  9000
 
 /* Menu actions are queued rather than acted on where they are noticed, because
    they arrive from two places - button events and axis sampling - at different
@@ -210,8 +199,8 @@ void input_sample(Input *in)
         if (SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) in->right = true;
 
         int x = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX);
-        if (x < -STICK_DEADZONE) in->left  = true;
-        if (x >  STICK_DEADZONE) in->right = true;
+        if (x < -tune.STICK_DEADZONE) in->left  = true;
+        if (x >  tune.STICK_DEADZONE) in->right = true;
 
         if (pad_firing(c)) in->fire = true;
 
@@ -221,18 +210,18 @@ void input_sample(Input *in)
         int y = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY);
         int dy = s_menu_dir_y[i];
         if (dy == 0) {
-            if (y < -MENU_PRESS) { dy = -1; ui_push(UI_UP);   }
-            if (y >  MENU_PRESS) { dy =  1; ui_push(UI_DOWN); }
-        } else if (y > -MENU_RELEASE && y < MENU_RELEASE) {
+            if (y < -tune.MENU_PRESS) { dy = -1; ui_push(UI_UP);   }
+            if (y >  tune.MENU_PRESS) { dy =  1; ui_push(UI_DOWN); }
+        } else if (y > -tune.MENU_RELEASE && y < tune.MENU_RELEASE) {
             dy = 0;
         }
         s_menu_dir_y[i] = dy;
 
         int dx = s_menu_dir_x[i];
         if (dx == 0) {
-            if (x < -MENU_PRESS) { dx = -1; ui_push(UI_LEFT);  }
-            if (x >  MENU_PRESS) { dx =  1; ui_push(UI_RIGHT); }
-        } else if (x > -MENU_RELEASE && x < MENU_RELEASE) {
+            if (x < -tune.MENU_PRESS) { dx = -1; ui_push(UI_LEFT);  }
+            if (x >  tune.MENU_PRESS) { dx =  1; ui_push(UI_RIGHT); }
+        } else if (x > -tune.MENU_RELEASE && x < tune.MENU_RELEASE) {
             dx = 0;
         }
         s_menu_dir_x[i] = dx;

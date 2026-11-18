@@ -10,17 +10,9 @@
  * wave, and everything that happens when those things touch. It owns the
  * collision checks because it is the only thing that can see both sides. */
 
-/* Shots in the air at once. Missing costs real time - a shot has to clear the
-   top of the screen before its slot frees up - which is where most of the
-   difficulty comes from. A dual fighter fires from both hulls and is allowed
-   twice as many, which is most of what makes rescuing one worth doing. */
-#define SHOTS_SINGLE 2
-#define SHOTS_DUAL   4
-#define MAX_SHOTS    SHOTS_DUAL
-#define START_LIVES  3
-
-/* How far each hull of a dual fighter sits from the pair's centre. */
-#define DUAL_OFFSET 8.0f
+/* Room for shots in the air: the most tune.SHOTS_SINGLE or tune.SHOTS_DUAL
+   may ask for. */
+#define MAX_SHOTS 4
 
 typedef struct {
     Vec2 pos;

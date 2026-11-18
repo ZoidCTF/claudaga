@@ -183,36 +183,9 @@ static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
     },
 };
 
-#define ENTRY_SPEED  2.6f    /* pixels per tick along an entry or return path */
-
-/* The difficulty ramp. Each pair is stage 1 and the far end; stages between
-   interpolate, past RAMP_STAGES sits at the hard end.
- *
- * The cap is a bound on the burst, not a driver - it is never actually reached,
- * because a dive lasts ~150 ticks and the burst below is what fills the screen.
- * Entry speed does not ramp: the entry is watched, not played. */
-#define RAMP_STAGES  12
-
-#define ATTACK_INTERVAL      105    /* ticks between attacks, stage 1  */
-#define ATTACK_INTERVAL_END   44
-
-#define DIVE_SPEED_1        3.1f    /* pixels per tick down a dive     */
-#define DIVE_SPEED_END      4.3f
-
-#define DIVER_CAP_1            3    /* dive groups in the air at once  */
-#define DIVER_CAP_END  MAX_DIVERS
-
-#define SWAY_PERIOD_1     420.0f    /* ticks for one full sway cycle   */
-#define SWAY_PERIOD_END   240.0f
-
-/* Bursts change the shape of the pressure rather than the rate: two or three
-   attacks together, then a gap.
- *
- * The gap is measured, not guessed - at 16 the worst pair convoys for 27 ticks,
- * at 24 for 9. Past about 28 a burst outlasts the interval after it, which is
- * an even stream with extra steps. */
-#define BURST_LEN_END   3
-#define BURST_GAP      24
+/* The tunables this file reads - the ramp, the formation, missiles, attack
+   curves, the beam, bonus pacing - are in tuning.def with their reasons. What
+   stays here is derived from them or measures them. */
 
 /* How close two dive groups must be, and for how long, to count as travelling
    together rather than crossing. Only the distance is enforced; the tick count
@@ -220,106 +193,45 @@ static const Flight ENTRIES[ENTRY_SETS][FLIGHT_COUNT] = {
 #define CONVOY_DIST  14.0f
 #define CONVOY_TICKS 20
 
-/* How much faster the last bonus round flies than the first. Small - a bonus
-   stage is a shooting gallery, not a threat. */
-#define CHAL_SPEED_RAMP 0.30f
-
-/* A flat trim on every bonus round; they were authored too fast to read. Kept
-   out of the per-round table so that still says how the rounds differ. */
-
 /* Flyers per group. Eight groups of five fill the wave. */
 #define CHAL_GROUP 5
-#define CHAL_SPEED_TRIM 0.75f
-
-/* How far the parked block drifts either side of its slots. Unlike everything
-   above this does not ramp: the outer columns sit 40px from the screen edge
-   and a 16px sprite needs 8 of that, so the amplitude is bounded by the screen
-   rather than by taste. Later stages sway faster instead of wider. */
-#define SWAY_AMP 10.0f
-
-/* What a bonus round pays lives in the header, since the game shows the
-   totals: CHALLENGE_HIT_SCORE per flyer caught, CHALLENGE_PERFECT for catching
-   every one. The perfect bonus is worth far more than the sum of the hits,
-   which is what makes a challenging stage a thing to be good at rather than a
-   free forty shots. */
-
-/* Minimum gap between two enemies entering the same return lane. At entry
-   speed this works out around 50px of daylight, comfortable for a 16px
-   sprite. */
-#define RETURN_SPACING 20
-
-/* Where a boss's escorts ride: this far along the path ahead of it, and this
-   far to either side. The boss sits at the trailing apex of the triangle.
-   Both have to clear a 16px sprite or the trio reads as one smeared blob -
-   the lead is what separates the escorts from the boss, the spread what
-   separates them from each other. */
-#define ESCORT_LEAD   21.0f
-#define ESCORT_SPREAD 17.0f
 
 /* Missiles. Divers shoot on the way down; a parked enemy never does.
 
    Aim is not a straight line to the fighter. It can only move along its row,
    so a missile arriving flat along that row cannot be dodged. Two rules: the
    shooter must be some way above, and the aim is clamped into a cone about
-   straight down. */
-#define ENEMY_SHOT_SPEED  2.3f
-/* How much less often an enemy flying in shoots than one attacking. An entry
-   puts forty enemies on screen in eleven seconds, so the dive rate would be a
-   wall of fire. Nothing shoots on the way in during stage one. */
-#define ENTRY_FIRE_RATIO 5
-
-#define FIRE_CHANCE_IN    150     /* per diving enemy, per tick, stage 1 */
-#define FIRE_CHANCE_IN_END 68     /* and at the far end of the ramp      */
-/* The least warning a missile may give. Written as time and the height derived
-   from it: 44px sounds like clearance but is 19 ticks, about a person's
-   reaction time with nothing left for moving afterwards. */
-#define FIRE_MIN_WARNING  28.0f
-#define FIRE_MIN_HEIGHT   (ENEMY_SHOT_SPEED * FIRE_MIN_WARNING)
-#define FIRE_MAX_SLOPE    1.0f    /* |dx| <= dy: 45 degrees from straight down */
+   straight down. The warning is the rule; the height follows from it. */
+#define FIRE_MIN_HEIGHT   (tune.ENEMY_SHOT_SPEED * tune.FIRE_MIN_WARNING)
 
 static bool is_boss(ShapeId s);
 
 /* ------------------------------------------------------------ the beam */
 
-/* The capture routine, in ticks. A boss drops out of formation, hangs there
-   with the beam open long enough to be worth dodging or shooting, then shuts
-   it and goes home. */
-#define BEAM_DESCEND  56
-#define BEAM_OPEN     18
-#define BEAM_HOLD     96
-#define BEAM_CLOSE    18
-#define BEAM_TOTAL    (BEAM_DESCEND + BEAM_OPEN + BEAM_HOLD + BEAM_CLOSE)
-
-/* The cone itself. It hangs below the boss and widens as it falls. */
-#define BEAM_LEN    122.0f
-#define BEAM_TOP_HW   5.0f
-#define BEAM_BOT_HW  26.0f
-#define BEAM_BANDS   16
-
-/* How far down the boss hangs while the beam is open. Chosen with BEAM_LEN:
-   hover plus length must reach PLAYER_Y or nothing can ever be caught. */
-#define BEAM_HOVER_Y 146
+#define BEAM_TOTAL (tune.BEAM_DESCEND + tune.BEAM_OPEN + tune.BEAM_HOLD + tune.BEAM_CLOSE)
 
 /* How far the beam has opened, 0 to 1. */
 static float beam_open(const Enemy *e)
 {
     int t = e->beam_t;
-    if (t < BEAM_DESCEND) return 0.0f;
-    t -= BEAM_DESCEND;
-    if (t < BEAM_OPEN)    return (float)t / (float)BEAM_OPEN;
-    t -= BEAM_OPEN;
-    if (t < BEAM_HOLD)    return 1.0f;
-    t -= BEAM_HOLD;
-    return 1.0f - (float)t / (float)BEAM_CLOSE;
+    if (t < tune.BEAM_DESCEND) return 0.0f;
+    t -= tune.BEAM_DESCEND;
+    if (t < tune.BEAM_OPEN)    return (float)t / (float)tune.BEAM_OPEN;
+    t -= tune.BEAM_OPEN;
+    if (t < tune.BEAM_HOLD)    return 1.0f;
+    t -= tune.BEAM_HOLD;
+    /* Past the end only when a reload shortened the beam under a boss using it. */
+    if (t >= tune.BEAM_CLOSE)  return 0.0f;
+    return 1.0f - (float)t / (float)tune.BEAM_CLOSE;
 }
 
 /* Half-width of the cone at `depth` below its mouth. */
 static float beam_half_width(float depth, float open)
 {
-    float t = depth / (BEAM_LEN * open);
+    float t = depth / (tune.BEAM_LEN * open);
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
-    return (BEAM_TOP_HW + (BEAM_BOT_HW - BEAM_TOP_HW) * t) * open;
+    return (tune.BEAM_TOP_HW + (tune.BEAM_BOT_HW - tune.BEAM_TOP_HW) * t) * open;
 }
 
 bool wave_beam_catch(const Wave *w, Vec2 at, int *boss)
@@ -332,7 +244,7 @@ bool wave_beam_catch(const Wave *w, Vec2 at, int *boss)
         if (open <= 0.05f) continue;
 
         float depth = at.y - e->pos.y;
-        if (depth < 0.0f || depth > BEAM_LEN * open) continue;
+        if (depth < 0.0f || depth > tune.BEAM_LEN * open) continue;
         if (fabsf(at.x - e->pos.x) > beam_half_width(depth, open)) continue;
 
         if (boss) *boss = i;
@@ -367,12 +279,10 @@ int wave_captive_holder(const Wave *w)
  * It also decides who can be shot. Screen y grows downward, so a shot climbing
  * from the fighter's row meets the boss first: the boss shields the captive,
  * and a straight shot up the column frees it rather than destroying it. */
-#define CAPTIVE_ABOVE 15.0f
-
 static Vec2 captive_offset(const Enemy *e)
 {
     (void)e;
-    Vec2 o = { 0.0f, -CAPTIVE_ABOVE };
+    Vec2 o = { 0.0f, -tune.CAPTIVE_ABOVE };
     return o;
 }
 
@@ -397,7 +307,7 @@ bool wave_captive_hit(Wave *w, Vec2 at)
 
     Vec2 c = wave_captive_pos(w);
     float dx = at.x - c.x, dy = at.y - c.y;
-    if (dx * dx + dy * dy > ENEMY_HIT_RADIUS * ENEMY_HIT_RADIUS) return false;
+    if (dx * dx + dy * dy > tune.ENEMY_HIT_RADIUS * tune.ENEMY_HIT_RADIUS) return false;
 
     w->enemies[h].has_captive = false;
     w->captive_holder = -1;
@@ -472,54 +382,42 @@ static float on_screen(float x)
    wider than the radius that kills, so a shave counts. */
 #define FIGHTER_BAND 12.0f
 
-#define AIM_LEAD_UP  20.0f    /* how far above the aim a curve lines up   */
-#define AIM_Y_MIN    216.0f   /* the highest a curve commits to its line  */
-#define AIM_Y_VARY   24       /* and how much lower it may happen instead */
-/* Not a free choice. The lining-up leg is the one part of the tail whose
-   tangent still points back at wherever the curve came from, so it can be as
-   flat as it likes and must finish before the fighter's band starts. */
-typedef char aim_lines_up_above_the_band[
-    (AIM_Y_MIN + AIM_Y_VARY <= PLAYER_Y - FIGHTER_BAND) ? 1 : -1];
 #define AIM_EXIT_Y   340.0f
 
-/* The rule as a multiple of "the fighter can outrun it". At 1.0 an attack can
-   never cross the row sideways faster than the fighter moves. Relaxing it to
-   2.0 buys about one convoy tick in fifteen, which is not worth the guarantee;
-   the knob exists so a difficulty pass can weaken this knowingly. */
-#define AIM_TILT     1.00f
-#define AIM_SLOPE    (AIM_TILT * PLAYER_SPEED / DIVE_SPEED_END)
+/* The steepest sideways drift allowed below the aim, derived from AIM_TILT: at
+   the hardest dive speed, AIM_TILT times the fighter's own speed. */
+#define AIM_SLOPE    (tune.AIM_TILT * tune.PLAYER_SPEED / tune.DIVE_SPEED_END)
 
-/* Where an attack aims, how hard it slants past, and the height it commits at.
- * Drawn per launch to keep attacks apart, because a shared approach is a funnel.
- * Ablated over 576 runs: each is worth about two convoy ticks and none is
- * decisive; they are kept because they are nearly free.
- *
- * Drawn from a pixel-wide range rather than a few fixed lanes - the pairs that
- * convoy are the ones that drew the same lane, so quantising was the mistake.
- * Missing the fighter is correct: an attack that always ends on its exact
- * column is one it has to move for every time. */
-#define AIM_SPREAD    20      /* pixels either side of the fighter        */
+const char *wave_tuning_check(const Tuning *t)
+{
+    /* The lining-up leg is the one part of the tail whose tangent still points
+       back at wherever the curve came from, so it can be as flat as it likes
+       and must finish before the fighter's band starts. */
+    if (t->AIM_Y_MIN + (float)t->AIM_Y_VARY > (float)PLAYER_Y - FIGHTER_BAND)
+        return "AIM_Y_MIN+AIM_Y_VARY REACHES THE ROW";
+    /* Hover plus length must reach the row or nothing can ever be caught. */
+    if ((float)t->BEAM_HOVER_Y + t->BEAM_LEN < (float)PLAYER_Y)
+        return "BEAM_HOVER_Y+BEAM_LEN MISSES THE ROW";
+    return NULL;
+}
 
-/* Each curve's aim, offset from the fighter towards the side it broke to.
-   Ordered loop, cross, plunge, peel and spaced wider than the convoy distance,
-   so two attacks are held apart by construction rather than luck. */
-#define AIM_OUTER     26.0f
-#define AIM_INNER      9.0f
-#define AIM_SLANT_MIN 0.35f   /* share of AIM_SLOPE; 1.0 is the full tilt */
-#define AIM_SLANTS    8
-
+/* Where an attack aims, how hard it slants past, and the height it commits at:
+   drawn per launch, from a pixel-wide range rather than a few fixed lanes,
+   because a shared approach is a funnel. Missing the fighter is correct - an
+   attack that always ends on its exact column is one it has to move for every
+   time. */
 typedef struct { float off; float slant; float y; } Aim;
 
 static Aim aim_pick(Wave *w)
 {
     Aim a;
-    a.off   = (float)(rng_below(w, 2 * AIM_SPREAD + 1) - AIM_SPREAD);
-    a.slant = AIM_SLANT_MIN + (1.0f - AIM_SLANT_MIN)
-                            * (float)rng_below(w, AIM_SLANTS)
-                            / (float)(AIM_SLANTS - 1);
+    a.off   = (float)(rng_below(w, 2 * tune.AIM_SPREAD + 1) - tune.AIM_SPREAD);
+    a.slant = tune.AIM_SLANT_MIN + (1.0f - tune.AIM_SLANT_MIN)
+                            * (float)rng_below(w, tune.AIM_SLANTS)
+                            / (float)(tune.AIM_SLANTS - 1);
     /* Free to vary: the approach's four points are collinear whatever the
        spacing between them, so the tangents still come out at AIM_SLOPE. */
-    a.y     = AIM_Y_MIN + (float)rng_below(w, AIM_Y_VARY + 1);
+    a.y     = tune.AIM_Y_MIN + (float)rng_below(w, tune.AIM_Y_VARY + 1);
     return a;
 }
 
@@ -537,7 +435,7 @@ static float aim_column(float player_x, float bias, Aim aim)
 /* Where a curve has to have arrived by, AIM_LEAD_UP above where it aims. */
 static float aim_lead_x(float x, float sweep)
 {
-    return x - sweep * AIM_SLOPE * AIM_LEAD_UP;
+    return x - sweep * AIM_SLOPE * tune.AIM_LEAD_UP;
 }
 
 /* A curve's body runs from the formation down to wherever this attack lines up,
@@ -546,12 +444,11 @@ static float aim_lead_x(float x, float sweep)
  * scale by the same factor - a body that loses height but keeps its width turns
  * harder in the same arc, which took the cross's sharpest corner from 97 degrees
  * per 12px to 172: a bee that stops dead and reverses. */
-#define BODY_GAP   14.0f
 #define BODY_SPAN  124.0f   /* the height these shapes were drawn at */
 
 static float body_span(float from_y, float lead_y)
 {
-    float span = lead_y - BODY_GAP - from_y;
+    float span = lead_y - tune.BODY_GAP - from_y;
     return span > 40.0f ? span : 40.0f;
 }
 
@@ -571,7 +468,7 @@ static int aim_tail(Vec2 *c, int n, float x, float sweep, float aim_y,
                     int with_lead)
 {
     if (with_lead) {
-        c[n].x = aim_lead_x(x, sweep);  c[n].y = aim_y - AIM_LEAD_UP;  ++n;
+        c[n].x = aim_lead_x(x, sweep);  c[n].y = aim_y - tune.AIM_LEAD_UP;  ++n;
     }
     c[n].x = x;  c[n].y = aim_y;  ++n;
     c[n].x = x + sweep * AIM_SLOPE * ((float)PLAYER_Y - aim_y);
@@ -591,7 +488,7 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
 {
     float s     = (float)side;
     float slant = aim.slant;
-    float lead  = aim.y - AIM_LEAD_UP;   /* where this one has to be lined up */
+    float lead  = aim.y - tune.AIM_LEAD_UP;   /* where this one has to be lined up */
     float span  = body_span(from.y, lead);
     float scale = body_scale(span);
     Vec2  c[10];
@@ -606,7 +503,7 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         c[3].x = from.x + s * 30.0f * scale;  c[3].y = from.y + 0.51f * span; /* fall away */
         c[4].x = (from.x + player_x) * 0.5f - s * 22.0f;
         c[4].y = from.y + span;                                  /* swing in  */
-        n = aim_tail(c, 5, aim_column(player_x, s * AIM_OUTER, aim), s * slant,
+        n = aim_tail(c, 5, aim_column(player_x, s * tune.AIM_OUTER, aim), s * slant,
                      aim.y, 1);
         break;
 
@@ -625,7 +522,7 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         if (drop < 60.0f) drop = 60.0f;
         float R  = drop / 9.0f;                   /* well clear of 2*pi, so it never lifts */
         float x0 = on_screen(from.x + s * 10.0f);
-        float x1 = aim_lead_x(aim_column(player_x, -s * AIM_OUTER, aim), s * slant);
+        float x1 = aim_lead_x(aim_column(player_x, -s * tune.AIM_OUTER, aim), s * slant);
         float cy = from.y + R;                    /* the turn starts at `from` */
 
         /* One turn at fifths. Even spacing matters: control points a few pixels
@@ -641,7 +538,7 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
             c[k + 1].y = cy + t * drop - R * COS5[k];
         }
         /* The turn already ends lined up, so no lead point. */
-        n = aim_tail(c, 6, aim_column(player_x, -s * AIM_OUTER, aim), s * slant,
+        n = aim_tail(c, 6, aim_column(player_x, -s * tune.AIM_OUTER, aim), s * slant,
                      aim.y, 0);
         break;
     }
@@ -664,7 +561,7 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         c[4].x = on_screen(GAME_W * 0.5f - s * 40.0f * scale
                            + (from.x - GAME_W * 0.5f) * 0.30f);
         c[4].y = from.y + span;
-        n = aim_tail(c, 5, aim_column(player_x, -s * AIM_INNER, aim), s * slant,
+        n = aim_tail(c, 5, aim_column(player_x, -s * tune.AIM_INNER, aim), s * slant,
                      aim.y, 1);
         break;
 
@@ -678,7 +575,7 @@ static void build_dive_path(Path *out, Vec2 from, int side, float player_x,
         /* The hook stays on the side the plunge broke towards. Cutting back
            across ran it head-on into the loop's approach, which comes the other
            way; parallel, they pass. */
-        n = aim_tail(c, 4, aim_column(player_x, s * AIM_INNER, aim), s * slant,
+        n = aim_tail(c, 4, aim_column(player_x, s * tune.AIM_INNER, aim), s * slant,
                      aim.y, 1);
         break;
     }
@@ -749,18 +646,18 @@ static void set_difficulty(Wave *w, int stage)
     if (stage < 1) stage = 1;
     w->stage = stage;
 
-    float t = (float)(stage - 1) / (float)RAMP_STAGES;
+    float t = (float)(stage - 1) / (float)tune.RAMP_STAGES;
     if (t > 1.0f) t = 1.0f;
 
-    w->attack_interval = ATTACK_INTERVAL +
-        (int)((ATTACK_INTERVAL_END - ATTACK_INTERVAL) * t);
-    w->dive_speed      = DIVE_SPEED_1 + (DIVE_SPEED_END - DIVE_SPEED_1) * t;
-    w->diver_cap       = DIVER_CAP_1 +
-        (int)((DIVER_CAP_END - DIVER_CAP_1) * t + 0.5f);
-    w->fire_chance_in  = FIRE_CHANCE_IN +
-        (int)((FIRE_CHANCE_IN_END - FIRE_CHANCE_IN) * t);
-    w->burst_len       = (int)(BURST_LEN_END * t + 0.5f);
-    w->entry_fire      = (stage >= 2) ? w->fire_chance_in * ENTRY_FIRE_RATIO : 0;
+    w->attack_interval = tune.ATTACK_INTERVAL +
+        (int)((tune.ATTACK_INTERVAL_END - tune.ATTACK_INTERVAL) * t);
+    w->dive_speed      = tune.DIVE_SPEED_1 + (tune.DIVE_SPEED_END - tune.DIVE_SPEED_1) * t;
+    w->diver_cap       = tune.DIVER_CAP_1 +
+        (int)((tune.DIVER_CAP_END - tune.DIVER_CAP_1) * t + 0.5f);
+    w->fire_chance_in  = tune.FIRE_CHANCE_IN +
+        (int)((tune.FIRE_CHANCE_IN_END - tune.FIRE_CHANCE_IN) * t);
+    w->burst_len       = (int)(tune.BURST_LEN_END * t + 0.5f);
+    w->entry_fire      = (stage >= 2) ? w->fire_chance_in * tune.ENTRY_FIRE_RATIO : 0;
 
     /* Attack curves are unlocked rather than ramped. Stage one flies the one
        shape the game has always flown, so a first wave is still the thing a
@@ -770,7 +667,14 @@ static void set_difficulty(Wave *w, int stage)
     if (stage >= 2) w->dive_shapes = 2;
     if (stage >= 4) w->dive_shapes = 3;
     if (stage >= 8) w->dive_shapes = DIVE_SHAPES;
-    w->sway_period     = SWAY_PERIOD_1 + (SWAY_PERIOD_END - SWAY_PERIOD_1) * t;
+    w->sway_period     = tune.SWAY_PERIOD_1 + (tune.SWAY_PERIOD_END - tune.SWAY_PERIOD_1) * t;
+}
+
+void wave_retune(Wave *w)
+{
+    /* The one exception to fixing a stage when it starts: someone has just
+       changed the ramp on purpose and is watching for the difference. */
+    set_difficulty(w, w->stage);
 }
 
 /* A boss and its escorts share one path and count once - the unit the cap is
@@ -837,7 +741,7 @@ static void wave_reset_common(Wave *w)
         e->path        = (within & 1) ? fl->path_b : fl->path_a;
         e->launch_tick = fl->start_tick + within * fl->spacing;
         e->s           = 0.0f;
-        e->speed       = ENTRY_SPEED;
+        e->speed       = tune.ENTRY_SPEED;
         e->pos         = w->paths[e->path].pt[0];
         e->pos.x      += e->lane_dx;
         e->heading     = HEADING_S;
@@ -902,7 +806,7 @@ typedef struct {
    faster than it can be shot at. It still works out over a whole pair, but in
    the moment you are always behind - which is what made round 4 feel
    impossible rather than hard. */
-#define CHAL_MIN_GAP FIRE_COOLDOWN
+#define CHAL_MIN_GAP tune.FIRE_COOLDOWN
 
 /* The four lanes a round flies, in the order its groups take them. */
 static const ChalLane *chal_lanes(int variant);
@@ -1002,11 +906,11 @@ void wave_restart_challenge(Wave *w, int stage, int variant)
        for. Without this, cycling back to the first pattern at stage 19 would
        be a step backwards - the round table sets a round's character, and the
        stage sets how hard that character is to deal with. */
-    float t = (float)(stage - 1) / (float)RAMP_STAGES;
+    float t = (float)(stage - 1) / (float)tune.RAMP_STAGES;
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
-    float speed = ENTRY_SPEED * round->speed * CHAL_SPEED_TRIM
-                * (1.0f + CHAL_SPEED_RAMP * t);
+    float speed = tune.ENTRY_SPEED * round->speed * tune.CHAL_SPEED_TRIM
+                * (1.0f + tune.CHAL_SPEED_RAMP * t);
 
     const ChalLane *lanes = chal_lanes(variant);
 
@@ -1236,10 +1140,10 @@ static void launch_attack(Wave *w, float player_x)
     if (type == TYPE_BOSS && w->captive_holder < 0 && rng_below(w, 3) == 0) {
         leader->beam_from = leader->pos;
         leader->beam_pos.x = player_x;
-        leader->beam_pos.y = (float)BEAM_HOVER_Y;
+        leader->beam_pos.y = (float)tune.BEAM_HOVER_Y;
         /* Keep the cone on screen even when the fighter is against an edge. */
-        if (leader->beam_pos.x < BEAM_BOT_HW)          leader->beam_pos.x = BEAM_BOT_HW;
-        if (leader->beam_pos.x > GAME_W - BEAM_BOT_HW) leader->beam_pos.x = GAME_W - BEAM_BOT_HW;
+        if (leader->beam_pos.x < tune.BEAM_BOT_HW)          leader->beam_pos.x = tune.BEAM_BOT_HW;
+        if (leader->beam_pos.x > GAME_W - tune.BEAM_BOT_HW) leader->beam_pos.x = GAME_W - tune.BEAM_BOT_HW;
         leader->beam_t = 0;
         leader->state  = ENEMY_BEAMING;
         audio_play(SFX_BEAM);
@@ -1288,7 +1192,7 @@ static void launch_attack(Wave *w, float player_x)
         }
         if (best < 0) break;
         join_dive(w, &w->enemies[best], p,
-                  ESCORT_LEAD, slot == 0 ? -ESCORT_SPREAD : ESCORT_SPREAD);
+                  tune.ESCORT_LEAD, slot == 0 ? -tune.ESCORT_SPREAD : tune.ESCORT_SPREAD);
     }
 }
 
@@ -1403,7 +1307,7 @@ bool wave_hit(Wave *w, int index, int *score, int *popup)
        nothing is in formation, so the usual table does not apply. */
     if (w->challenge) {
         ++w->challenge_hits;
-        *score = CHALLENGE_HIT_SCORE;
+        *score = tune.CHALLENGE_HIT_SCORE;
         e->state = ENEMY_DEAD;
         return true;
     }
@@ -1455,7 +1359,7 @@ static void enemy_fire(Wave *w, const Enemy *e, float player_x)
     /* Hold the shot inside the cone. Clamping the sideways reach against the
        drop rather than clamping an angle keeps it to one comparison and no
        trigonometry. */
-    float reach = dy * FIRE_MAX_SLOPE;
+    float reach = dy * tune.FIRE_MAX_SLOPE;
     if (dx >  reach) dx =  reach;
     if (dx < -reach) dx = -reach;
 
@@ -1468,8 +1372,8 @@ static void enemy_fire(Wave *w, const Enemy *e, float player_x)
 
         s->alive = true;
         s->pos   = e->pos;
-        s->vel.x = dx / len * ENEMY_SHOT_SPEED;
-        s->vel.y = dy / len * ENEMY_SHOT_SPEED;
+        s->vel.x = dx / len * tune.ENEMY_SHOT_SPEED;
+        s->vel.y = dy / len * tune.ENEMY_SHOT_SPEED;
 
         float deg = (float)(atan2(fabs((double)dx), (double)dy) * 180.0 / M_PI);
         if (deg > w->shot_max_deg) w->shot_max_deg = deg;
@@ -1501,11 +1405,11 @@ static void send_home(Wave *w, Enemy *e)
 
     int depart = w->tick;
     if (w->lane_free[lane] > depart) depart = w->lane_free[lane];
-    w->lane_free[lane] = depart + RETURN_SPACING;
+    w->lane_free[lane] = depart + tune.RETURN_SPACING;
 
     e->path        = lane;
     e->launch_tick = depart;
-    e->speed       = ENTRY_SPEED;
+    e->speed       = tune.ENTRY_SPEED;
     e->state       = ENEMY_WAITING;
     e->returning   = true;
 }
@@ -1533,7 +1437,7 @@ void wave_recall_except(Wave *w, int keep)
                 dive_path_release(w, e->dive_path);
                 e->dive_path = -1;
             }
-            e->speed = ENTRY_SPEED;
+            e->speed = tune.ENTRY_SPEED;
             { Vec2 block = { w->sway, w->lift };
                  begin_join_at(e, e->pos, e->heading, block); }
         }
@@ -1573,7 +1477,7 @@ void wave_update(Wave *w, float player_x)
        block as a unit and the columns stay columns. Starting from a sine at
        tick 0 means the offset is zero while the wave is still flying in, so
        the entry paths still end exactly on their slots. */
-    w->sway = SWAY_AMP * sinf((float)w->tick *
+    w->sway = tune.SWAY_AMP * sinf((float)w->tick *
                               (2.0f * (float)M_PI) / w->sway_period);
 
     /* Attacks only start once the wave is up, the way a stage does. The check
@@ -1592,7 +1496,7 @@ void wave_update(Wave *w, float player_x)
                quiet for a full interval. */
             if (w->burst_left > 0) {
                 --w->burst_left;
-                w->next_attack = w->tick + BURST_GAP;
+                w->next_attack = w->tick + tune.BURST_GAP;
             } else {
                 w->burst_left  = w->burst_len;
                 w->next_attack = w->tick + w->attack_interval;
@@ -1701,10 +1605,10 @@ void wave_update(Wave *w, float player_x)
         case ENEMY_BEAMING: {
             ++e->beam_t;
 
-            if (e->beam_t <= BEAM_DESCEND) {
+            if (e->beam_t <= tune.BEAM_DESCEND) {
                 /* Slide down out of formation, easing in and out so it settles
                    rather than stopping dead. */
-                float t = (float)e->beam_t / (float)BEAM_DESCEND;
+                float t = (float)e->beam_t / (float)tune.BEAM_DESCEND;
                 float k = t * t * (3.0f - 2.0f * t);
                 e->pos.x = e->beam_from.x + (e->beam_pos.x - e->beam_from.x) * k;
                 e->pos.y = e->beam_from.y + (e->beam_pos.y - e->beam_from.y) * k;
@@ -1731,7 +1635,7 @@ void wave_update(Wave *w, float player_x)
                     dive_path_release(w, e->dive_path);
                     e->dive_path = -1;
                 }
-                e->speed = ENTRY_SPEED;
+                e->speed = tune.ENTRY_SPEED;
                 { Vec2 block = { w->sway, w->lift };
                  begin_join_at(e, e->pos, e->heading, block); }
             }
@@ -1837,7 +1741,7 @@ void wave_print_stats(const Wave *w)
     printf("stage %d: attack every %d ticks, dive speed %.1f, cap %d group(s), "
            "fire 1 in %d, sway %.0fpx over %.0f ticks\n",
            w->stage, w->attack_interval, w->dive_speed, w->diver_cap,
-           w->fire_chance_in, SWAY_AMP, w->sway_period);
+           w->fire_chance_in, tune.SWAY_AMP, w->sway_period);
     printf("peak dive groups in the air at once: %d (cap %d)\n",
            w->peak_divers, w->diver_cap);
     static const char *SHAPE[4] = { "peel", "loop", "cross", "plunge" };
@@ -1866,7 +1770,7 @@ void wave_print_stats(const Wave *w)
         float sideways = wave_dive_sideways(w, &ws);
         printf("fastest an attack crosses the fighter's row sideways: %.1f px/tick "
                "(%s), against the fighter's %.1f\n",
-               sideways, wave_dive_name(ws), (double)PLAYER_SPEED);
+               sideways, wave_dive_name(ws), (double)tune.PLAYER_SPEED);
     }
     {
         int   worst = -1;
@@ -1874,7 +1778,7 @@ void wave_print_stats(const Wave *w)
         float clear = wave_entry_clearance(w, &worst, &low);
         printf("entry paths clear the fighter's row by %.0f px, worst is %s "
                "(under %.0f is an unavoidable hit)\n",
-               clear, wave_path_name(worst), (double)ENEMY_SHIP_RADIUS);
+               clear, wave_path_name(worst), (double)tune.ENEMY_SHIP_RADIUS);
         printf("  and while off the side of the screen they get no lower than "
                "y=%.0f, %.0f px above the row\n", low, (double)PLAYER_Y - low);
     }
@@ -1887,7 +1791,7 @@ void wave_print_stats(const Wave *w)
         {
             int gap = CHAL_ROUNDS[w->chal_variant].within_gap;
             printf("  flyers arrive every %d ticks, the gun cycles every %d%s\n",
-                   gap, FIRE_COOLDOWN,
+                   gap, tune.FIRE_COOLDOWN,
                    gap < CHAL_MIN_GAP ? "  <-- arriving faster than it can fire"
                                       : "");
         }
@@ -1983,10 +1887,10 @@ void wave_print_stats(const Wave *w)
            w->shot_max_deg);
     {
         /* Worst case: fired from the minimum height, straight down. */
-        float ticks = FIRE_MIN_HEIGHT / ENEMY_SHOT_SPEED;
+        float ticks = FIRE_MIN_HEIGHT / tune.ENEMY_SHOT_SPEED;
         printf("  the shortest warning a missile can give is %.0f ticks "
                "(%.2fs), in which the fighter can move %.0f px\n",
-               ticks, ticks / 60.0f, ticks * PLAYER_SPEED);
+               ticks, ticks / 60.0f, ticks * tune.PLAYER_SPEED);
     }
 
     int total = w->dives_boss + w->dives_butterfly + w->dives_bee;
@@ -2082,7 +1986,7 @@ static void track_convoys(Wave *w)
                    crowding down there is the price of that rule and not
                    something to tune away. Above it there is no such excuse, and
                    that is the number to hold. */
-                high[a][b] = (ea->pos.y < AIM_Y_MIN && eb->pos.y < AIM_Y_MIN);
+                high[a][b] = (ea->pos.y < tune.AIM_Y_MIN && eb->pos.y < tune.AIM_Y_MIN);
             }
         }
     }
@@ -2108,16 +2012,15 @@ static void track_convoys(Wave *w)
 
 /* How fast a board leaves or arrives. Brisk enough not to be a wait, slow
    enough to read as a formation moving rather than a cut. */
-#define LIFT_SPEED 3.2f
 
 bool wave_lift(Wave *w, float target)
 {
     float d = target - w->lift;
-    if (d > -LIFT_SPEED && d < LIFT_SPEED) {
+    if (d > -tune.LIFT_SPEED && d < tune.LIFT_SPEED) {
         w->lift = target;
         return true;
     }
-    w->lift += (d > 0.0f) ? LIFT_SPEED : -LIFT_SPEED;
+    w->lift += (d > 0.0f) ? tune.LIFT_SPEED : -tune.LIFT_SPEED;
     return false;
 }
 
@@ -2279,15 +2182,15 @@ void wave_draw(Gfx *g, const Wave *w)
 
         /* Bands sliding down the cone. The movement is the whole effect: a
            static gradient reads as a shape, a moving one reads as a beam. */
-        for (int b = 0; b < BEAM_BANDS; ++b) {
-            float phase = (float)((w->tick * 2 + b * 9) % (BEAM_BANDS * 9))
-                        / (float)(BEAM_BANDS * 9);
+        for (int b = 0; b < tune.BEAM_BANDS; ++b) {
+            float phase = (float)((w->tick * 2 + b * 9) % (tune.BEAM_BANDS * 9))
+                        / (float)(tune.BEAM_BANDS * 9);
             float t0 = phase;
             float t1 = phase + 0.055f;
             if (t1 > 1.0f) continue;
 
-            float d0 = t0 * BEAM_LEN * open;
-            float d1 = t1 * BEAM_LEN * open;
+            float d0 = t0 * tune.BEAM_LEN * open;
+            float d1 = t1 * tune.BEAM_LEN * open;
             float w0 = beam_half_width(d0, open);
             float w1 = beam_half_width(d1, open);
 
@@ -2362,7 +2265,7 @@ float wave_dive_sideways(const Wave *w, int *worst_shape)
     static const float FROM_X[]   = { (float)FORM_X, GAME_W * 0.5f,
                                       (float)(GAME_W - FORM_X) };
     static const float PLAYER_X[] = { 16.0f, GAME_W * 0.5f, (float)(GAME_W - 16) };
-    static const float AIM_OFF[]  = { -(float)AIM_SPREAD, 0.0f, (float)AIM_SPREAD };
+    const float        AIM_OFF[]  = { -(float)tune.AIM_SPREAD, 0.0f, (float)tune.AIM_SPREAD };
 
     float worst = 0.0f;
     int   which = -1;
@@ -2379,7 +2282,7 @@ float wave_dive_sideways(const Wave *w, int *worst_shape)
         /* The full tilt at both ends of the altitude range: the tilt is the
            worst case for the bound, the altitudes for where it lands. */
         Aim  aim  = { AIM_OFF[d], 1.0f,
-                      AIM_Y_MIN + (float)((e % 2) * AIM_Y_VARY) };
+                      tune.AIM_Y_MIN + (float)((e % 2) * tune.AIM_Y_VARY) };
         Vec2 from = { FROM_X[b], FROM_Y[a] };
         build_dive_path(&p, from, side, PLAYER_X[c], shape, aim);
 
@@ -2393,7 +2296,7 @@ float wave_dive_sideways(const Wave *w, int *worst_shape)
             float step = sqrtf(dx * dx + dy * dy);
             if (step < 1e-6f) continue;
 
-            float sideways = fabsf(dx) / step * DIVE_SPEED_END;
+            float sideways = fabsf(dx) / step * tune.DIVE_SPEED_END;
             if (sideways > worst) { worst = sideways; which = shape; }
         }
     }}}}}}}
@@ -2409,7 +2312,7 @@ void wave_dump_dives(void)
        a curve that doubled back; plotting the polyline caught both. */
     static const Vec2  FROM[]  = { { 56.0f, 44.0f }, { 104.0f, 76.0f },
                                    { 168.0f, 108.0f } };
-    static const float AIM_Y[] = { AIM_Y_MIN, AIM_Y_MIN + AIM_Y_VARY };
+    const float        AIM_Y[] = { tune.AIM_Y_MIN, tune.AIM_Y_MIN + tune.AIM_Y_VARY };
     float player_x = 112.0f;
 
     for (int shape = 0; shape < DIVE_SHAPES; ++shape) {

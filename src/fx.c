@@ -4,13 +4,6 @@
 #include <math.h>
 #include <stdio.h>
 
-#define ENEMY_BLAST_LIFE   26
-#define PLAYER_BLAST_LIFE  42
-#define SCORE_LIFE         90
-
-#define ENEMY_SHARDS   11
-#define PLAYER_SHARDS  15
-
 void fx_reset(Fx *fx)
 {
     for (int i = 0; i < MAX_FX; ++i) fx->item[i].kind = FX_NONE;
@@ -53,12 +46,12 @@ static void spawn_blast(Fx *fx, Vec2 at, FxKind kind, int life)
 
 void fx_blast_enemy(Fx *fx, Vec2 at)
 {
-    spawn_blast(fx, at, FX_ENEMY_BLAST, ENEMY_BLAST_LIFE);
+    spawn_blast(fx, at, FX_ENEMY_BLAST, tune.ENEMY_BLAST_LIFE);
 }
 
 void fx_blast_player(Fx *fx, Vec2 at)
 {
-    spawn_blast(fx, at, FX_PLAYER_BLAST, PLAYER_BLAST_LIFE);
+    spawn_blast(fx, at, FX_PLAYER_BLAST, tune.PLAYER_BLAST_LIFE);
 }
 
 void fx_score(Fx *fx, Vec2 at, int points)
@@ -67,7 +60,7 @@ void fx_score(Fx *fx, Vec2 at, int points)
     it->kind  = FX_SCORE;
     it->pos   = at;
     it->age   = 0;
-    it->life  = SCORE_LIFE;
+    it->life  = tune.SCORE_LIFE;
     it->seed  = 0;
     it->value = points;
 }
@@ -163,11 +156,11 @@ void fx_draw(Gfx *g, const Fx *fx)
             break;
 
         case FX_ENEMY_BLAST:
-            draw_blast(g, it, ENEMY_SHARDS, 15.0f, ENEMY_HOT, ENEMY_COOL);
+            draw_blast(g, it, tune.ENEMY_SHARDS, 15.0f, ENEMY_HOT, ENEMY_COOL);
             break;
 
         case FX_PLAYER_BLAST:
-            draw_blast(g, it, PLAYER_SHARDS, 21.0f, PLAY_HOT, PLAY_COOL);
+            draw_blast(g, it, tune.PLAYER_SHARDS, 21.0f, PLAY_HOT, PLAY_COOL);
             break;
 
         case FX_SCORE: {

@@ -73,9 +73,17 @@ Invariants the stats must keep reporting healthy:
   measurement logs — those live in commit messages. Longest block ~16 lines.
 - Commit messages are prose: what, why, what was measured, what was verified.
 - Commit locally as work completes; NEVER push until Zoid says to push.
-- Tuning constants live in formation.c next to the ramp; derived rules
-  (FIRE_MIN_HEIGHT, AIM_SLOPE, CHAL_MIN_GAP) are written as the constraint,
-  with the pixel value computed from it.
+- Tunables live in src/tuning.def (name, default, legal range, one-line doc,
+  and the reasoning) and are read as `tune.NAME`; a `tuning.cfg` in the working
+  directory overrides them and is hot-reloaded. Derived rules (FIRE_MIN_HEIGHT,
+  AIM_SLOPE, CHAL_MIN_GAP, BEAM_TOTAL) stay #defines over `tune.*`, written as
+  the constraint with the value computed from it. Rules between two tunables
+  go in wave_tuning_check (formation.c) so a bad file is rejected, not run.
+  Array sizes, metric thresholds and authored geometry stay #defines.
+- Tune without rebuilding: `claudaga --write-tuning tuning.cfg` writes every
+  knob commented out; uncomment and edit while the game runs. Headless runs
+  print each override first and exit 1 on a rejected file; `--no-tuning`
+  ignores the file, `--tuning F` names another.
 
 ## Release
 

@@ -101,6 +101,7 @@ src/
   audio.*       SDL_mixer: effects, music, and the tools that measure them
   input.*       keyboard and controllers, merged into three booleans
   settings.*    volumes and fullscreen, persisted
+  tuning.*      the gameplay numbers, read from tuning.cfg at run time
   icon.*        the application icon, drawn from the fighter's polygons
   main.c        the loop, the views, and the two-player session
 assets/audio/   sound and music, all CC0
@@ -133,6 +134,22 @@ icon from the fighter's own polygons, which is only needed when that artwork
 changes; several of the wave figures are worst-of over a
 run, so they want sampling across seeds rather than reading once.
 `claudaga --help` lists the lot.
+
+## Tuning without rebuilding
+
+Speeds, timings, the difficulty ramp, the beam, scoring and the rest - about
+eighty numbers, listed with their reasons in `src/tuning.def` - are read at
+run time. `claudaga --write-tuning tuning.cfg` writes all of them, commented
+out, with their defaults and legal ranges; uncomment a line and change it. The
+game reads `tuning.cfg` from the working directory at start-up and rereads it
+whenever it is saved, so changes show up in a running game; the outcome is
+shown briefly at the top of the screen. A file with any mistake in it - an
+unknown name, a value out of range, two values that break a rule between them -
+is rejected as a whole and the game carries on with what it had.
+
+The headless flags honour the file too, and list each override before anything
+else so a tuned measurement cannot pass for a stock one. `--tuning FILE` reads
+another file and `--no-tuning` ignores it.
 
 ## Licence
 

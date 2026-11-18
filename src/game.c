@@ -13,45 +13,12 @@ static const SDL_Color CYAN   = {   0, 224, 255, 255 };
 static const SDL_Color RED    = { 255,  72,  72, 255 };
 static const SDL_Color DIM    = { 150, 150, 168, 255 };
 
-#define SHOT_SPEED      4.0f
-#define RESPAWN_TICKS   70
-
-/* How much room the fighter needs before it will come back. The recall sends
-   the divers home, but one already close to the bottom takes a moment to leave,
-   and reappearing inside it costs the next life straight away. */
-#define SPAWN_CLEAR_RADIUS 34.0f
-
-#define CAPTURE_LIFT   1.7f    /* how fast a caught fighter is drawn up   */
-#define CAPTURE_SPIN   9.0f    /* degrees per tick while it is being taken */
-#define RESCUE_SPEED   2.1f    /* a freed fighter's descent                */
-#define STAGE_PAUSE     120
-#define GAME_OVER_TICKS 240
-
-/* How long the results screen holds before the game reports itself finished.
-   Long enough to read four lines without hurrying; fire cuts it short. */
-#define RESULTS_TICKS 420
-
-/* How fast the surviving fighter walks to the middle during a reunion. Slower
-   than steering, so it reads as the game taking over rather than as input. */
-#define RESCUE_CENTRE_SPEED 1.4f
-
-/* How long the extra-fighter notice stays up. */
-#define EXTRA_MSG_TICKS 120
-
-/* Extra fighters, on the arcade's default schedule: the first at 20,000, the
-   second at 70,000, and one more every 70,000 after that. The spare-ship row
-   only has space for five, so beyond that the count keeps rising but the
-   display does not. */
-#define FIRST_EXTRA_LIFE 20000
-#define EXTRA_LIFE_EVERY 70000
-
 /* Collision is a distance test rather than a box. The art inside a 16x16 cell
    is smaller than the cell, so these are all tighter than half a sprite - the
    arcade is famously forgiving about near misses and matching that matters
    more than being geometrically exact. */
-#define R_SHOT_ENEMY    (ENEMY_HIT_RADIUS + 2.0f)
-#define R_MISSILE_SHIP  8.0f
-#define R_ENEMY_SHIP    ENEMY_SHIP_RADIUS
+#define R_SHOT_ENEMY    (tune.ENEMY_HIT_RADIUS + 2.0f)
+#define R_ENEMY_SHIP    tune.ENEMY_SHIP_RADIUS
 
 /* ------------------------------------------------------------------ stars */
 
@@ -209,7 +176,7 @@ void game_restart(Game *g)
     g->player.x        = GAME_W / 2.0f;
     g->player.alive    = true;
     g->player.dual     = g->always_dual;
-    g->player.lives    = START_LIVES;
+    g->player.lives    = tune.START_LIVES;
     g->player.respawn  = 0;
     g->player.captured = false;
     g->player.cap_boss = -1;
@@ -224,7 +191,7 @@ void game_restart(Game *g)
     g->turn_over   = false;
 
     g->over           = false;
-    g->next_life      = FIRST_EXTRA_LIFE;
+    g->next_life      = tune.FIRST_EXTRA_LIFE;
     g->extra_msg      = 0;
     g->shots_fired    = 0;
     g->shots_hit      = 0;
@@ -310,8 +277,8 @@ static int player_hulls(const Game *g, Vec2 *out)
         out[0] = player_pos(g);
         return 1;
     }
-    out[0].x = g->player.x - DUAL_OFFSET; out[0].y = (float)PLAYER_Y;
-    out[1].x = g->player.x + DUAL_OFFSET; out[1].y = (float)PLAYER_Y;
+    out[0].x = g->player.x - tune.DUAL_OFFSET; out[0].y = (float)PLAYER_Y;
+    out[1].x = g->player.x + tune.DUAL_OFFSET; out[1].y = (float)PLAYER_Y;
     return 2;
 }
 
@@ -358,14 +325,14 @@ static void start_capture(Game *g, int boss)
        --observe still lets the capture happen and only skips the cost. Blocking
        it outright meant the whole capture-and-rescue chain could not be watched
        headlessly at all, and it is the most involved thing the game does. */
-    if (!g->invulnerable && --g->player.lives <= 0) g->game_over = GAME_OVER_TICKS;
+    if (!g->invulnerable && --g->player.lives <= 0) g->game_over = tune.GAME_OVER_TICKS;
 }
 
 static void kill_player(Game *g)
 {
     if (!g->player.alive || g->invulnerable) return;
     g->player.alive   = false;
-    g->player.respawn = RESPAWN_TICKS;
+    g->player.respawn = tune.RESPAWN_TICKS;
     g->gone_tick      = g->tick;
     g->turn_over      = true;
     fx_blast_player(&g->fx, player_pos(g));
@@ -386,7 +353,7 @@ static void kill_player(Game *g)
        rather than into the middle of the attack that just killed it. */
     wave_recall(&g->wave);
 
-    if (--g->player.lives <= 0) g->game_over = GAME_OVER_TICKS;
+    if (--g->player.lives <= 0) g->game_over = tune.GAME_OVER_TICKS;
 }
 
 /* Player shots against the wave. A shot is spent on the first thing it
@@ -401,10 +368,10 @@ static void add_score(Game *g, int n)
 
     while (g->score >= g->next_life) {
         ++g->player.lives;
-        g->next_life = (g->next_life == FIRST_EXTRA_LIFE)
-                     ? EXTRA_LIFE_EVERY
-                     : g->next_life + EXTRA_LIFE_EVERY;
-        g->extra_msg = EXTRA_MSG_TICKS;
+        g->next_life = (g->next_life == tune.FIRST_EXTRA_LIFE)
+                     ? tune.EXTRA_LIFE_EVERY
+                     : g->next_life + tune.EXTRA_LIFE_EVERY;
+        g->extra_msg = tune.EXTRA_MSG_TICKS;
         audio_play(SFX_EXTRA);
         if (g->trace) {
             printf("tick %d: extra fighter at %d, now %d in reserve, next at %d\n",
@@ -509,7 +476,7 @@ static void collide_player(Game *g)
         EnemyShot *s = &g->wave.shot[i];
         if (!s->alive) continue;
         for (int h = 0; h < hulls; ++h) {
-            if (dist2(s->pos, hull[h]) <= R_MISSILE_SHIP * R_MISSILE_SHIP) {
+            if (dist2(s->pos, hull[h]) <= tune.R_MISSILE_SHIP * tune.R_MISSILE_SHIP) {
                 s->alive = false;
                 if (!lose_wingman(g, hull[h])) kill_player(g);
                 return;
@@ -542,7 +509,7 @@ static void advance_shots(Game *g)
     for (int i = 0; i < MAX_SHOTS; ++i) {
         Shot *sh = &g->shots[i];
         if (!sh->alive) continue;
-        sh->pos.y -= SHOT_SPEED;
+        sh->pos.y -= tune.SHOT_SPEED;
         if (sh->pos.y < -CELL) sh->alive = false;
     }
 }
@@ -557,11 +524,11 @@ static void clear_shots(Game *g)
    it lock up mid-screen while the message is on reads as the game hanging. */
 static void steer_player(Game *g, const Input *in)
 {
-    if (in->left)  g->player.x -= PLAYER_SPEED;
-    if (in->right) g->player.x += PLAYER_SPEED;
+    if (in->left)  g->player.x -= tune.PLAYER_SPEED;
+    if (in->right) g->player.x += tune.PLAYER_SPEED;
 
     /* A dual fighter is twice as wide, so it stops sooner at the edges. */
-    float half = CELL / 2.0f + (g->player.dual ? DUAL_OFFSET : 0.0f);
+    float half = CELL / 2.0f + (g->player.dual ? tune.DUAL_OFFSET : 0.0f);
     if (g->player.x < half)          g->player.x = half;
     if (g->player.x > GAME_W - half) g->player.x = GAME_W - half;
 }
@@ -589,12 +556,12 @@ static void fire(Game *g)
 {
     Vec2 hull[2];
     int  hulls = player_hulls(g, hull);
-    int  cap   = g->player.dual ? SHOTS_DUAL : SHOTS_SINGLE;
+    int  cap   = g->player.dual ? tune.SHOTS_DUAL : tune.SHOTS_SINGLE;
 
     if (shots_in_air(g) + hulls > cap) return;
 
     for (int h = 0; h < hulls; ++h) spawn_shot(g, hull[h].x);
-    g->fire_cooldown = FIRE_COOLDOWN;
+    g->fire_cooldown = tune.FIRE_COOLDOWN;
     audio_play(SFX_SHOT);
 }
 
@@ -612,14 +579,14 @@ static void update_capture_lift(Game *g)
     float dy = boss.y - g->player.cap_pos.y;
     float d  = sqrtf(dx * dx + dy * dy);
 
-    g->player.cap_spin += CAPTURE_SPIN;
-    if (d <= CAPTURE_LIFT) {
+    g->player.cap_spin += tune.CAPTURE_SPIN;
+    if (d <= tune.CAPTURE_LIFT) {
         wave_attach_captive(&g->wave, g->player.cap_boss);
         g->player.captured = false;
-        g->player.respawn  = RESPAWN_TICKS;
+        g->player.respawn  = tune.RESPAWN_TICKS;
     } else {
-        g->player.cap_pos.x += dx / d * CAPTURE_LIFT;
-        g->player.cap_pos.y += dy / d * CAPTURE_LIFT;
+        g->player.cap_pos.x += dx / d * tune.CAPTURE_LIFT;
+        g->player.cap_pos.y += dy / d * tune.CAPTURE_LIFT;
     }
 }
 
@@ -629,8 +596,8 @@ static void update_capture_lift(Game *g)
 static void walk_to_centre(Game *g)
 {
     float dx = GAME_W / 2.0f - g->player.x;
-    if (dx > RESCUE_CENTRE_SPEED)       g->player.x += RESCUE_CENTRE_SPEED;
-    else if (dx < -RESCUE_CENTRE_SPEED) g->player.x -= RESCUE_CENTRE_SPEED;
+    if (dx > tune.RESCUE_CENTRE_SPEED)       g->player.x += tune.RESCUE_CENTRE_SPEED;
+    else if (dx < -tune.RESCUE_CENTRE_SPEED) g->player.x -= tune.RESCUE_CENTRE_SPEED;
     else                                g->player.x  = GAME_W / 2.0f;
 }
 
@@ -651,7 +618,7 @@ static void update_rescue(Game *g)
     float dx = tx - g->rescue_pos.x, dy = ty - g->rescue_pos.y;
     float d  = sqrtf(dx * dx + dy * dy);
 
-    if (d <= RESCUE_SPEED) {
+    if (d <= tune.RESCUE_SPEED) {
         g->rescue_pos.x = tx;
         g->rescue_pos.y = ty;
 
@@ -665,8 +632,8 @@ static void update_rescue(Game *g)
             if (g->trace) printf("tick %d: dual fighter docked\n", g->tick);
         }
     } else {
-        g->rescue_pos.x += dx / d * RESCUE_SPEED;
-        g->rescue_pos.y += dy / d * RESCUE_SPEED;
+        g->rescue_pos.x += dx / d * tune.RESCUE_SPEED;
+        g->rescue_pos.y += dy / d * tune.RESCUE_SPEED;
     }
 }
 
@@ -801,7 +768,7 @@ void game_update(Game *g, const Input *in)
         Vec2 spot = { GAME_W / 2.0f, (float)PLAYER_Y };
         if (g->player.respawn == 0 && !g->turn_over
             && !fx_player_blast_active(&g->fx)
-            && wave_area_clear(&g->wave, spot, SPAWN_CLEAR_RADIUS)) {
+            && wave_area_clear(&g->wave, spot, tune.SPAWN_CLEAR_RADIUS)) {
             g->player.alive = true;
             g->player.dual  = g->always_dual;
             if (g->trace && g->player.dual)
@@ -827,13 +794,13 @@ void game_update(Game *g, const Input *in)
     collide_player(g);
 
     if (wave_cleared(&g->wave) && g->stage_clear == 0) {
-        g->stage_clear = STAGE_PAUSE;
+        g->stage_clear = tune.STAGE_PAUSE;
 
         /* A bonus round pays out when it ends: a flat rate per flyer caught on
            the way through, and a much larger bonus for catching every one. */
         if (wave_is_challenge(&g->wave)) {
             g->bonus_hits  = wave_challenge_hits(&g->wave);
-            g->bonus_award = (g->bonus_hits >= MAX_ENEMIES) ? CHALLENGE_PERFECT : 0;
+            g->bonus_award = (g->bonus_hits >= MAX_ENEMIES) ? tune.CHALLENGE_PERFECT : 0;
             add_score(g, g->bonus_award);
 
             /* The round is over, so its music goes rather than running on
@@ -923,7 +890,7 @@ static void draw_results(Gfx *gfx, const Game *g)
 void game_show_results(Game *g)
 {
     if (g->results > 0 || g->finished) return;
-    g->results       = RESULTS_TICKS;
+    g->results       = tune.RESULTS_TICKS;
     g->results_armed = false;
 }
 

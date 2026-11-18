@@ -53,6 +53,7 @@ G(SEG_8) { 0,0, 4,0,  4,0, 4,6,  4,6, 0,6,  0,6, 0,0,  0,3, 4,3 };
 G(SEG_9) { 4,6, 4,0,  4,0, 0,0,  0,0, 0,3,  0,3, 4,3 };
 
 G(SEG_DASH)  { 0.6f,3, 3.4f,3 };
+G(SEG_UNDER) { 0,6, 4,6 };
 G(SEG_DOT)   { 1.7f,5.7f, 2.3f,5.7f };
 G(SEG_COMMA) { 2.3f,5.0f, 1.4f,6.6f };
 G(SEG_COLON) { 2,1.6f, 2,2.3f,  2,4.0f, 2,4.7f };
@@ -93,6 +94,7 @@ static const Glyph GLYPHS[] = {
     GLYPH(':', SEG_COLON), GLYPH('/', SEG_SLASH), GLYPH('(', SEG_LPAR),
     GLYPH(')', SEG_RPAR),  GLYPH('<', SEG_LT),    GLYPH('>', SEG_GT),
     GLYPH('+', SEG_PLUS),  GLYPH('*', SEG_STAR),  GLYPH('%', SEG_PCT),
+    GLYPH('_', SEG_UNDER),
 };
 
 static const Glyph *s_index[128];

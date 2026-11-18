@@ -10,3 +10,6 @@ Working Copy of *
 
 # Windows Explorer thumbnail cache, appears wherever a folder gets browsed.
 Thumbs.db
+
+# Personal tuning overrides, read by the game at run time (see src/tuning.def).
+tuning.cfg

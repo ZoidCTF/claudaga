@@ -18,16 +18,6 @@
    shared rather than living in whichever module happens to draw the ship. */
 #define PLAYER_Y (GAME_H - 24)
 
-/* How fast the fighter moves, in pixels per tick. Shared because the rules
-   that decide when an enemy may fire are written in terms of how far the
-   player could get out of the way in the time a missile takes to arrive. */
-#define PLAYER_SPEED 1.6f
-
-/* Ticks between shots. Shared because a wave that sends enemies past faster
-   than this cannot be cleared however well it is played, so the schedules are
-   written against it rather than beside it. */
-#define FIRE_COOLDOWN 12
-
 typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -43,5 +33,9 @@ typedef struct { float x, y; } Vec2;
 #define HEADING_W 270.0f
 
 #define ARRAY_COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
+
+/* The tunables - fighter speed, fire rate, the ramp and the rest - are read
+   at run time, so every module sees them through here. */
+#include "tuning.h"
 
 #endif /* CLAUDAGA_COMMON_H */
