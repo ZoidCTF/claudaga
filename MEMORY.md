@@ -33,7 +33,7 @@ Updated 2026-08-26. Newest state first; trim entries that stop mattering.
 - **Bonus rounds:** two groups at a time with a pause between pairs (arcade
   rule); rounds 2-4 use column-shaped lanes E/F, translated not mirrored, so
   where to stand must be learnt (round 1 stays beatable from the middle — it
-  teaches the format); every lane arrives over the top (lane C entered from a
+  teaches the format); no lane enters from a side edge (lane C entered from a
   side edge at fighter height and was removed for it, along with unused D);
   flyers arrive no faster than the gun cycles (CHAL_MIN_GAP = FIRE_COOLDOWN).
 - **Music** (bonus.wav) is a 22.86s cut of CC0 "Venus" so no round loops it;

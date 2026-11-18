@@ -41,8 +41,8 @@ Invariants the stats must keep reporting healthy:
 - sideways crossing of the fighter's row <= 1.5 px/tick (fighter moves 1.6)
 - entry paths clear the fighter's row by ~24 px; no path enters from a side edge
 - missile warning >= 28 ticks (FIRE_MIN_WARNING — written as time, not height)
-- bonus rounds: max 2 groups / 10 flyers on screen; every lane arrives over the
-  top; within_gap >= FIRE_COOLDOWN; rounds 2-4 reach only 4 of 8 groups from
+- bonus rounds: max 2 groups / 10 flyers on screen; no lane enters from a side
+  edge (top or bottom only); within_gap >= FIRE_COOLDOWN; rounds 2-4 reach only 4 of 8 groups from
   one column but every pair has a column reaching both lanes
 - sharpest change of speed stays near dive speed (a spike = a position handed
   across a state change without being carried)
