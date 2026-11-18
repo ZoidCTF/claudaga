@@ -22,8 +22,9 @@ typedef struct {
 
 extern Tuning tune;
 
-/* Where values come from. NULL means tuning.cfg in the working directory, if
-   there is one. Loads it once and reports on stdout. Returns false when the
+/* Where values come from. NULL means tuning.cfg in the working directory, or
+   else beside the exe; while neither exists both are watched. Loads it once
+   and reports on stdout. Returns false when the
    file was rejected, or was named explicitly and is not there; either way the
    defaults are in force and the file is still watched. */
 bool tuning_open(const char *path);

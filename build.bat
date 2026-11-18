@@ -83,6 +83,15 @@ rem from anywhere - but that means the files have to actually be there.
 if not exist "%ROOT%build\assets" mkdir "%ROOT%build\assets"
 xcopy /y /q /e "%ROOT%assets" "%ROOT%build\assets\" >nul
 
+rem The tuning template is the game describing its own tunables, so it is
+rem written by the exe just built rather than kept by hand: a default or
+rem range changed in src\tuning.def shows up in the same commit.
+"%ROOT%build\claudaga.exe" --write-tuning "%ROOT%tuning.example.cfg" >nul
+if errorlevel 1 (
+    echo [build] ERROR: could not write tuning.example.cfg
+    exit /b 1
+)
+
 if not "%WARNS%"=="0" (
     echo [build] OK with %WARNS% warning^(s^) -^> build\claudaga.exe
 ) else (

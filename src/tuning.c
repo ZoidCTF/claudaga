@@ -10,6 +10,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include <SDL.h>
+
 #define TUNE_SECTION(title)
 #define TUNE_I(name, def, lo, hi, doc) def,
 #define TUNE_F(name, def, lo, hi, doc) def,
@@ -170,6 +172,7 @@ static bool parse_file(const char *path, Tuning *out, char *err, size_t errn)
 typedef struct { bool exists; long long mtime; long long size; } Stamp;
 
 static char  s_path[512];
+static bool  s_explicit;   /* named on the command line: never looked for */
 static Stamp s_loaded;     /* the file as it was when last read */
 static Stamp s_seen;       /* and as the previous poll found it */
 static char  s_status[160];
@@ -252,14 +255,35 @@ static int reload(bool first)
     return 1;
 }
 
+/* The working directory first, so a checkout can keep one at its root while
+   running build\claudaga.exe; then beside the exe, where a double-clicked
+   game's working directory already is. With neither, the working directory is
+   the one watched. */
+static void resolve(void)
+{
+    static char exe_dir_cfg[512];
+    if (!exe_dir_cfg[0]) {
+        char *base = SDL_GetBasePath();
+        if (base) {
+            snprintf(exe_dir_cfg, sizeof exe_dir_cfg, "%stuning.cfg", base);
+            SDL_free(base);
+        }
+    }
+    const char *pick = "tuning.cfg";
+    if (!stamp_of(pick).exists && exe_dir_cfg[0] && stamp_of(exe_dir_cfg).exists)
+        pick = exe_dir_cfg;
+    snprintf(s_path, sizeof s_path, "%s", pick);
+}
+
 bool tuning_open(const char *path)
 {
-    bool explicit_path = path != NULL;
-    snprintf(s_path, sizeof s_path, "%s", path ? path : "tuning.cfg");
+    s_explicit = path != NULL;
+    if (s_explicit) snprintf(s_path, sizeof s_path, "%s", path);
+    else            resolve();
     s_loaded = s_seen = stamp_of(s_path);
 
     if (!s_loaded.exists) {
-        if (!explicit_path) return true;      /* the shipped game */
+        if (!s_explicit) return true;         /* the shipped game */
         printf("tuning: %s not found\n", s_path);
         snprintf(s_status, sizeof s_status, "TUNING FILE NOT FOUND");
         return false;
@@ -274,6 +298,10 @@ int tuning_poll(void)
 {
     if (!s_path[0]) return 0;
     Stamp now = stamp_of(s_path);
+    if (!now.exists && !s_explicit) {
+        resolve();                  /* it may have turned up in the other place */
+        now = stamp_of(s_path);
+    }
     if (stamp_same(now, s_loaded)) { s_seen = now; return 0; }
     if (!stamp_same(now, s_seen))  { s_seen = now; return 0; }
     return reload(false);
@@ -297,10 +325,14 @@ bool tuning_write_template(const char *path)
     if (!f) { printf("tuning: cannot write %s\n", path); return false; }
 
     fprintf(f,
-        "# Claudaga tuning. Uncomment a line and change its value to override it;\n"
-        "# anything left commented keeps the built-in default. The running game\n"
-        "# rereads this file when it changes. A file with any error is rejected\n"
-        "# whole and the game keeps the values it had.\n");
+        "# Claudaga tuning, read from tuning.cfg in the working directory or else\n"
+        "# beside claudaga.exe. Uncomment a line and change its value to override\n"
+        "# it; anything left commented keeps the built-in default. The running\n"
+        "# game rereads the file when it changes. A file with any error is\n"
+        "# rejected whole and the game keeps the values it had.\n"
+        "#\n"
+        "# Generated from src/tuning.def by every build as tuning.example.cfg -\n"
+        "# copy it to tuning.cfg and edit the copy.\n");
 
     for (int i = 0; i < ARRAY_COUNT(KNOBS); ++i) {
         const Knob *k = &KNOBS[i];

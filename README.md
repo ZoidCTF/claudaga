@@ -139,17 +139,21 @@ run, so they want sampling across seeds rather than reading once.
 
 Speeds, timings, the difficulty ramp, the beam, scoring and the rest - about
 eighty numbers, listed with their reasons in `src/tuning.def` - are read at
-run time. `claudaga --write-tuning tuning.cfg` writes all of them, commented
-out, with their defaults and legal ranges; uncomment a line and change it. The
-game reads `tuning.cfg` from the working directory at start-up and rereads it
+run time. `tuning.example.cfg` lists all of them, commented out, with their
+defaults and legal ranges: copy it to `tuning.cfg`, uncomment a line and change
+it. The build regenerates the example from `src/tuning.def`, so it is always
+current - edit the copy, not the example. The game reads `tuning.cfg` from the
+working directory, or failing that from beside `claudaga.exe`, and rereads it
 whenever it is saved, so changes show up in a running game; the outcome is
-shown briefly at the top of the screen. A file with any mistake in it - an
+shown briefly at the top of the screen. Keep a long-lived one at the root of
+the checkout: `build\` is wiped by a clean build. A file with any mistake in it - an
 unknown name, a value out of range, two values that break a rule between them -
 is rejected as a whole and the game carries on with what it had.
 
 The headless flags honour the file too, and list each override before anything
 else so a tuned measurement cannot pass for a stock one. `--tuning FILE` reads
-another file and `--no-tuning` ignores it.
+another file, `--no-tuning` ignores it, and `--write-tuning FILE` writes the
+example afresh.
 
 ## Licence
 
